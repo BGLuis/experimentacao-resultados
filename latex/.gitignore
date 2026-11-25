@@ -1,0 +1,36 @@
+## Arquivos auxiliares e temporários gerados pelo LaTeX
+*.aux
+*.bbl
+*.blg
+*.brf
+*.fdb_latexmk
+*.fls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.snm
+*.synctex*
+*.toc
+*.vrb
+*.dvi
+*.ps
+*.xdv
+*.bcf
+*.run.xml
+
+## Diretórios e caches temporários
+_minted-*
+.texpadtmp/
+.vscode/.browse.VC.db*
+.vscode/ipch/
+.history/
+
+## Arquivos de Sistema Operacional
+.DS_Store
+Thumbs.db
+*~

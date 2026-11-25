@@ -1,0 +1,48 @@
+\section{Questionário com Rastreabilidade}
+
+\textbf{Likert (ITEM\_08--18):} 1 = Discordo Totalmente; 2 = Discordo Parcialmente; 3 = Neutro; 4 = Concordo Parcialmente; 5 = Concordo Totalmente, mais a opção \enquote{Não se aplica} (dado faltante, exceto no ITEM\_18). \textbf{Frequência (ITEM\_19--20):} 1 = Nunca; 2 = Raramente; 3 = Às vezes; 4 = Frequentemente; 5 = Sempre, mais a opção \enquote{Não se aplica} (dado faltante). Os ITEM\_08--18 aparecem em bloco único, em ordem aleatória quando a plataforma permitir (com o ITEM\_18 de verificação de atenção integrado ao bloco e o ITEM\_16 nunca adjacente a outro item de qualidade).
+
+{\footnotesize
+\arrayrulecolor{BorderGray}
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{4.5pt}
+\begin{longtable}{|L{0.55cm}|L{7.35cm}|L{1.85cm}|L{1.65cm}|L{4.25cm}|}
+\hline
+\rowcolor{HeaderBg}
+\tblhead{ID} & \tblhead{Enunciado} & \tblhead{Escala} & \tblhead{QP} & \tblhead{Métrica / construto} \\
+\hline
+\endfirsthead
+\hline
+\rowcolor{HeaderBg}
+\tblhead{ID} & \tblhead{Enunciado} & \tblhead{Escala} & \tblhead{QP} & \tblhead{Métrica / construto} \\
+\hline
+\endhead
+\hline
+\endfoot
+\textbf{01} & Você atua profissionalmente (remunerado) em desenvolvimento de software? & Nominal & Elegib. & Elegibilidade (Não encerra) \\ \hline
+\textbf{02} & Usou ferramentas de IA para código nos últimos 6 meses? & Nominal & Elegib. & Elegibilidade (Não encerra) \\ \hline
+\textbf{03} & Você atua profissionalmente no Brasil? & Nominal & Elegib. & Elegibilidade (Não encerra) \\ \hline
+\textbf{04} & Você está matriculado(a) na disciplina de Medição e Experimentação em Eng.\ de Software (turma deste estudo)? & Nominal & Elegib. & Elegibilidade (Sim encerra) \\ \hline
+\textbf{05} & Tempo de atuação em desenvolvimento: (a) $< 1$ ano; (b) 1--3 anos; (c) $> 3$ a 6 anos; (d) $> 6$ anos & Ordinal & QP3 & Senioridade M\_SEN: Jr = a+b; Pl = c; Sr = d (tempo, não cargo) \\ \hline
+\textbf{06} & Ferramenta de IA que mais usa (escolha única: Copilot; ChatGPT; Claude; Cursor; Gemini; Outra, descreva sem citar empresas) & Nominal & Caract. & Ferramenta M\_TOOL \\ \hline
+\textbf{07} & Frequência de uso de IA no trabalho: 1 = $< 1$ dia/semana; 2 = 1--3 dias; 3 = 4--5 dias; 4 = todos os dias úteis & Ordinal & Caract.; QP4 & Frequência de uso M\_USO (covariável) \\ \hline
+\textbf{08} & O uso de IA reduz o tempo que gasto implementando novas funcionalidades. & Ordinal & QP1, QP3 & C\_VEL1 \\ \hline
+\textbf{09} & Consigo depurar bugs mais rapidamente com IA. & Ordinal & QP1, QP3 & C\_VEL2 \\ \hline
+\textbf{10} & Consigo refatorar trechos de código mais rapidamente com IA. & Ordinal & QP1, QP3 & C\_VEL3 \\ \hline
+\textbf{11} & O volume das minhas entregas aumentou depois que adotei IA. & Ordinal & QP1, QP3 & C\_VEL4 \\ \hline
+\textbf{12} & O código gerado por IA atende aos padrões de legibilidade e arquitetura do meu time. & Ordinal & QP2--4 & C\_QUAL1 (legibilidade) \\ \hline
+\textbf{13} & O código escrito com apoio de IA é fácil de manter e evoluir. & Ordinal & QP2--4 & C\_QUAL2 (manutenibilidade) \\ \hline
+\textbf{14} & O código escrito com apoio de IA tem menos defeitos do que o que eu escreveria sem IA. & Ordinal & QP2--4 & C\_QUAL3 (defeitos) \\ \hline
+\textbf{15} & O assistente me ajuda a escrever testes unitários mais abrangentes. & Ordinal & QP2--4 & C\_QUAL4 (testes) \\ \hline
+\textbf{16} & O código gerado por IA costuma conter falhas que exigem correção significativa da minha parte. & Ordinal (invertido) & QP2--4 & C\_QUAL5 (reverso) \\ \hline
+\textbf{17} & No geral, a qualidade do código que entrego melhorou com a IA. & Ordinal & QP2--4 & C\_QUAL6 (global) \\ \hline
+\textbf{18} & Atenção: para confirmar que está lendo, assinale exatamente \enquote{Discordo Parcialmente}. & Ordinal & Auditoria & Controle (descarta se $\neq 2$) \\ \hline
+\textbf{19} & Com que frequência lê e revisa o código gerado por IA linha a linha antes de aprová-lo? & Ordinal & QP4 & M\_REV1 \\ \hline
+\textbf{20} & Com que frequência executa testes sobre o código gerado por IA antes de aprová-lo? & Ordinal & QP4 & M\_REV2 \\ \hline
+\textbf{21} & (Aberta) Qual o principal risco que a IA trouxe ao seu trabalho/time? Não cite nomes de pessoas ou empresas. & Nominal (após codificação) & QP2 & Temas de risco \\ \hline
+\textbf{22} & (Aberta) Qual o principal benefício técnico que a IA trouxe ao seu trabalho/time? Não cite nomes. & Nominal (após codificação) & QP1 & Temas de benefício \\ \hline
+\end{longtable}
+\arrayrulecolor{black}
+}
+
+\textbf{Construtos (todos com mais de um item):} C\_VEL = média dos ITEM\_08--11; C\_QUAL = média dos ITEM\_12--17 (ITEM\_16 invertido: $6 - x$); M\_REV = média dos ITEM\_19--20. Os escores compostos são tratados como ordinais, e por isso todos os testes inferenciais são não paramétricos. A QP2 é lida também item a item: legibilidade (12), manutenibilidade (13), defeitos (14).

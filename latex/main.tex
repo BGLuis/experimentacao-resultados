@@ -1,0 +1,54 @@
+%% =========================================================================
+%% PROTOCOLO DE SURVEY PRÉ-REGISTRADO
+%% Qualidade e Velocidade com Assistentes de IA
+%% =========================================================================
+
+\documentclass[10pt,a4paper]{article}
+
+\input{config/preambulo}
+\input{config/metadados}
+
+\begin{document}
+\thispagestyle{fancy}
+\frenchspacing
+
+% --- Cabeçalho estilizado (sem capa ou folha de rosto separadas) ---
+{\LARGE\bfseries\color{TextDark}\docTitulo\par}
+\vspace{4pt}
+{\small
+\textbf{Disciplina:} \docDisciplina\par
+\vspace{1pt}
+\textbf{Integrantes:} \docIntegrantes\par
+\vspace{1pt}
+\textbf{Status:} \docStatus\ (\docInstituicao)\par
+}
+\vspace{4pt}
+{\color{PrimaryBlue}\hrule height 1.4pt}
+\vspace{2pt}
+
+% --- Seções 1 a 8 ---
+\input{secoes/01_objetivo_qps}
+\input{secoes/02_populacao_amostragem}
+\input{secoes/03_questionario}
+\input{secoes/04_pre_teste}
+\input{secoes/05_plano_analise}
+\input{secoes/06_etica_lgpd}
+\input{secoes/07_ameacas_validade}
+\input{secoes/08_divulgacao_cronograma}
+
+% --- Referências compactas ---
+\begingroup
+\nocite{*}
+\renewcommand{\refname}{\normalsize Referências}
+\let\oldthebibliography\thebibliography
+\renewcommand{\thebibliography}[1]{%
+  \oldthebibliography{#1}%
+  \setlength{\itemsep}{1pt}%
+  \setlength{\parskip}{0pt}%
+}
+\footnotesize
+\bibliographystyle{plain}
+\bibliography{referencias}
+\endgroup
+
+\end{document}

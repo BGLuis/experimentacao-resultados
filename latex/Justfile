@@ -1,0 +1,40 @@
+# =========================================================================
+# Justfile para automação do Protocolo de Survey Pré-Registrado em LaTeX
+# Documentação do Just: https://github.com/casey/just
+# =========================================================================
+
+main := "main"
+docker_image := "protocolo-survey-latex:latest"
+
+# Exibe todos os comandos disponíveis
+default:
+    @just --list
+
+# Compila o documento em PDF utilizando o latexmk local
+pdf:
+    latexmk -pdf {{main}}.tex
+
+# Monitora alterações nos arquivos .tex e recompila automaticamente (local)
+watch:
+    latexmk -pdf -pvc {{main}}.tex
+
+# Limpa arquivos temporários e auxiliares gerados pelo LaTeX
+clean:
+    -which latexmk >/dev/null 2>&1 && latexmk -c || true
+    rm -f *.aux *.bbl *.blg *.brf *.fls *.fdb_latexmk *.log *.out *synctex* *.toc secoes/*.aux
+
+# Limpa todos os arquivos temporários e o arquivo PDF final
+distclean: clean
+    rm -f {{main}}.pdf
+
+# Constrói a imagem Docker para compilação sem instalar TeX Live na máquina host
+docker-build:
+    docker build -t {{docker_image}} .
+
+# Compila o documento em PDF utilizando o Docker (sem precisar de TeX Live local)
+docker-pdf:
+    docker run --rm -v "$PWD:/workspace" -w /workspace {{docker_image}} latexmk -pdf {{main}}.tex
+
+# Monitora alterações e recompila automaticamente o PDF usando o Docker
+docker-watch:
+    docker run --rm -it -v "$PWD:/workspace" -w /workspace {{docker_image}} latexmk -pdf -pvc -view=none {{main}}.tex

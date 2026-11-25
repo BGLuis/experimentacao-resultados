@@ -1,0 +1,10 @@
+# Node / Dashboard build artifacts
+node_modules/
+dashboard/dist/
+*.tsbuildinfo
+.vite/
+
+# OS & editor files
+.DS_Store
+Thumbs.db
+*~

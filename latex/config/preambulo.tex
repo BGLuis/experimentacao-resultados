@@ -1,0 +1,107 @@
+%% =========================================================================
+%% PACOTES E CONFIGURAÇÕES DO DOCUMENTO
+%% =========================================================================
+
+% --- Codificação e fonte ---
+\IfFileExists{lmodern.sty}{%
+  \usepackage{lmodern}%
+  \usepackage{microtype}%
+}{%
+  \usepackage[expansion=false]{microtype}%
+}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\IfFileExists{portuges.ldf}{%
+  \usepackage[brazil]{babel}%
+}{%
+  \usepackage{babel}%
+  \babelprovide[import,main]{brazilian}%
+}
+\renewcommand{\familydefault}{\sfdefault}
+
+% --- Geometria compacta para manter o protocolo em até 6 páginas ---
+\usepackage[top=1.8cm, bottom=2.0cm, left=1.8cm, right=1.8cm, footskip=0.9cm]{geometry}
+
+% --- Paleta de cores do protocolo ---
+\usepackage[table]{xcolor}
+\definecolor{PrimaryBlue}{HTML}{1F4E8C}
+\definecolor{BorderGray}{HTML}{CFD6CB}
+\definecolor{TextDark}{HTML}{142027}
+\definecolor{HeaderBg}{HTML}{F1F5F9}
+\definecolor{MutedText}{HTML}{4A5568}
+
+\color{TextDark}
+
+% --- Matemática e símbolos ---
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% --- Tabelas ---
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+
+% --- Listas compactas ---
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.4em, itemsep=3.5pt, topsep=4pt, parsep=0pt, partopsep=0pt}
+\setlist[enumerate]{leftmargin=1.4em, itemsep=3.5pt, topsep=4pt, parsep=0pt, partopsep=0pt}
+
+% --- Citações e aspas ---
+\usepackage{csquotes}
+
+% --- Caixas estilizadas (Termo de Consentimento) ---
+\usepackage{tcolorbox}
+\newtcolorbox{consentbox}{
+  colback=HeaderBg!55!white,
+  colframe=PrimaryBlue,
+  boxrule=0pt,
+  leftrule=2.5pt,
+  arc=0pt,
+  left=8pt,
+  right=8pt,
+  top=5pt,
+  bottom=5pt,
+  before skip=4pt,
+  after skip=4pt
+}
+
+% --- Cabeçalho e rodapé ---
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\footrule}{{\color{BorderGray}\hrule width\headwidth height\footrulewidth}\vskip 3pt}
+\fancyfoot[L]{\footnotesize\color{MutedText}\docRodapeEsq}
+\fancyfoot[R]{\footnotesize\color{MutedText}Página \thepage\ de \pageref{LastPage}}
+
+% --- Títulos de seção compactos ---
+\usepackage{titlesec}
+\titleformat{\section}
+  {\large\bfseries\color{TextDark}}
+  {\thesection.}{0.45em}{}
+\titlespacing*{\section}{0pt}{12pt}{5pt}
+
+% --- Hiperlinks e metadados PDF ---
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=PrimaryBlue,
+  citecolor=PrimaryBlue,
+  urlcolor=PrimaryBlue,
+  pdftitle={Protocolo de Survey Pré-Registrado: Qualidade e Velocidade com Assistentes de IA},
+  pdfauthor={Gabriel Assis, Gustavo Lima, João Pedro Peres, Luis Henrique Gonçalves, Marcela Mendes}
+}
+
+% --- Ajustes de espaçamento textual ---
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4.5pt}
+\linespread{1.18}
+\raggedbottom
+
+% --- Comandos auxiliares para tabelas ---
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\tblhead}[1]{\textbf{\color{TextDark}#1}}
