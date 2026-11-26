@@ -1,17 +1,26 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
-import type { EChartsOption } from 'echarts';
+import type { ECElementEvent, EChartsOption } from 'echarts';
 
-interface EChartProps {
+export interface EChartProps {
   option: EChartsOption;
   height?: number;
   ariaLabel: string;
   className?: string;
+  onChartClick?: (params: ECElementEvent) => void;
 }
 
-export function EChart({ option, height = 340, ariaLabel, className = '' }: EChartProps) {
+export function EChart({
+  option,
+  height = 340,
+  ariaLabel,
+  className = '',
+  onChartClick,
+}: EChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
+  const onClickRef = useRef<((params: ECElementEvent) => void) | undefined>(onChartClick);
+  onClickRef.current = onChartClick;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -19,6 +28,11 @@ export function EChart({ option, height = 340, ariaLabel, className = '' }: ECha
 
     const chart = echarts.init(el, undefined, { renderer: 'svg' });
     chartRef.current = chart;
+
+    const handleClick = (params: ECElementEvent) => {
+      onClickRef.current?.(params);
+    };
+    chart.on('click', handleClick);
 
     const observer = new ResizeObserver(() => {
       if (chartRef.current && !chartRef.current.isDisposed()) {
@@ -30,6 +44,7 @@ export function EChart({ option, height = 340, ariaLabel, className = '' }: ECha
     return () => {
       observer.disconnect();
       if (!chart.isDisposed()) {
+        chart.off('click', handleClick);
         chart.dispose();
       }
       chartRef.current = null;

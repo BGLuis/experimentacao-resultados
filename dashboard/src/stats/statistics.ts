@@ -880,7 +880,8 @@ export function kruskalWallis(
   target: string,
   label: string,
   groupedValues: Array<{ group: string; values: number[] }>,
-  alphaAdjusted = 0.025
+  alphaAdjusted = 0.025,
+  bootstrapIterations = BOOTSTRAP_B
 ): KruskalWallisResult {
   const groups = groupedValues.map((g) => summarizeGroup(g.group, g.values));
   const nonEmpty = groupedValues.filter((g) => g.values.length > 0);
@@ -897,12 +898,16 @@ export function kruskalWallis(
     for (const val of g.values) labeledObs.push({ gIdx, val });
   });
 
-  const epsilonSquaredCI = bootstrapCI(labeledObs, (sample) => {
-    const buckets: number[][] = nonEmpty.map(() => []);
-    for (const obs of sample) buckets[obs.gIdx].push(obs.val);
-    if (buckets.some((b) => b.length === 0)) return null;
-    return computeKruskalH(buckets).epsilonSquared;
-  });
+  const epsilonSquaredCI = bootstrapCI(
+    labeledObs,
+    (sample) => {
+      const buckets: number[][] = nonEmpty.map(() => []);
+      for (const obs of sample) buckets[obs.gIdx].push(obs.val);
+      if (buckets.some((b) => b.length === 0)) return null;
+      return computeKruskalH(buckets).epsilonSquared;
+    },
+    bootstrapIterations
+  );
 
   // Dunn's post-hoc with Bonferroni (k*(k-1)/2 pairs)
   const numPairs = (k * (k - 1)) / 2;
@@ -948,7 +953,8 @@ export function kruskalWallis(
 
 export function analyzeQP3(
   respondents: ValidRespondent[],
-  invertItem16 = true
+  invertItem16 = true,
+  bootstrapIterations = BOOTSTRAP_B
 ): QP3Result {
   const alphaFamily = 0.025;
   const minRequiredPerGroup = 8;
@@ -994,7 +1000,8 @@ export function analyzeQP3(
       group: sen,
       values: extractConstruct('C_VEL', (r) => r.seniority === sen),
     })),
-    alphaFamily
+    alphaFamily,
+    bootstrapIterations
   );
 
   const cQualKW = kruskalWallis(
@@ -1004,7 +1011,8 @@ export function analyzeQP3(
       group: sen,
       values: extractConstruct('C_QUAL', (r) => r.seniority === sen),
     })),
-    alphaFamily
+    alphaFamily,
+    bootstrapIterations
   );
 
   let cVelMW: MannWhitneyResult | null = null;
@@ -1091,7 +1099,8 @@ export function analyzeQP3(
           .map(getVal)
           .filter((v): v is number => v !== null),
       })),
-      pBonf
+      pBonf,
+      bootstrapIterations
     );
 
     let mw: MannWhitneyResult | null = null;
@@ -1256,7 +1265,8 @@ function seniorityCode(s: SeniorityLevel | null): number | null {
 export function analyzeQP4(
   respondents: ValidRespondent[],
   invertItem16 = true,
-  normalizeTools = true
+  normalizeTools = true,
+  bootstrapIterations = BOOTSTRAP_B
 ): QP4Result {
   const alpha = 0.05;
   const getQual = (r: ValidRespondent): number | null =>
@@ -1273,11 +1283,14 @@ export function analyzeQP4(
     mainPairs.map((p) => p.x),
     mainPairs.map((p) => p.y)
   );
-  const mainCI = bootstrapCI(mainPairs, (sample) =>
-    computeSpearman(
-      sample.map((s) => s.x),
-      sample.map((s) => s.y)
-    ).rho
+  const mainCI = bootstrapCI(
+    mainPairs,
+    (sample) =>
+      computeSpearman(
+        sample.map((s) => s.x),
+        sample.map((s) => s.y)
+      ).rho,
+    bootstrapIterations
   );
   const mainMag = classifyCohenRho(mainRes.rho);
 
@@ -1301,11 +1314,14 @@ export function analyzeQP4(
     no16Pairs.map((p) => p.x),
     no16Pairs.map((p) => p.y)
   );
-  const no16CI = bootstrapCI(no16Pairs, (sample) =>
-    computeSpearman(
-      sample.map((s) => s.x),
-      sample.map((s) => s.y)
-    ).rho
+  const no16CI = bootstrapCI(
+    no16Pairs,
+    (sample) =>
+      computeSpearman(
+        sample.map((s) => s.x),
+        sample.map((s) => s.y)
+      ).rho,
+    bootstrapIterations
   );
 
   // Sensitivity 2: C_QUAL without ITEM_17
@@ -1316,11 +1332,14 @@ export function analyzeQP4(
     no17Pairs.map((p) => p.x),
     no17Pairs.map((p) => p.y)
   );
-  const no17CI = bootstrapCI(no17Pairs, (sample) =>
-    computeSpearman(
-      sample.map((s) => s.x),
-      sample.map((s) => s.y)
-    ).rho
+  const no17CI = bootstrapCI(
+    no17Pairs,
+    (sample) =>
+      computeSpearman(
+        sample.map((s) => s.x),
+        sample.map((s) => s.y)
+      ).rho,
+    bootstrapIterations
   );
 
   // Sensitivity 3: Partial Spearman controlling M_SEN & M_USO
@@ -1341,13 +1360,16 @@ export function analyzeQP4(
     partialRows.map((p) => p.sen),
     partialRows.map((p) => p.uso)
   );
-  const partialCI = bootstrapCI(partialRows, (sample) =>
-    partialSpearman(
-      sample.map((s) => s.x),
-      sample.map((s) => s.y),
-      sample.map((s) => s.sen),
-      sample.map((s) => s.uso)
-    ).rho
+  const partialCI = bootstrapCI(
+    partialRows,
+    (sample) =>
+      partialSpearman(
+        sample.map((s) => s.x),
+        sample.map((s) => s.y),
+        sample.map((s) => s.sen),
+        sample.map((s) => s.uso)
+      ).rho,
+    bootstrapIterations
   );
 
   const sensitivity: QP4SensitivityRow[] = [

@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { analyzeSurveyCsv, DEFAULT_FILTER_STATE } from './stats';
-import type { FilterState } from './stats/types';
-import { HeaderBar } from './components/HeaderBar';
+import {
+  DEFAULT_BI_FILTER_STATE,
+  DEFAULT_FILTER_STATE,
+  analyzeBiDashboardSlice,
+  analyzeSurveyCsv,
+} from './stats';
+import type { BiFilterState, FilterState } from './stats';
+import { HeaderBar, type AppViewMode } from './components/HeaderBar';
 import { FilterBar } from './components/FilterBar';
 import { TabNav, type TabId } from './components/TabNav';
 import { Callout } from './components/UiPrimitives';
+import { BiDashboardPage } from './pages/BiDashboardPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { LikertPage } from './pages/LikertPage';
 import { ReliabilityPage } from './pages/ReliabilityPage';
@@ -14,14 +20,48 @@ import { MethodologyPage } from './pages/MethodologyPage';
 
 const REPO_CSV_PATH = '/questions.csv';
 
+function readViewModeFromUrl(): AppViewMode {
+  if (typeof window === 'undefined') return 'dashboard';
+  const raw = new URLSearchParams(window.location.search).get('mode');
+  return raw === 'report' ? 'report' : 'dashboard';
+}
+
 export function App() {
   const [csvText, setCsvText] = useState<string | null>(null);
   const [sourceLabel, setSourceLabel] = useState<string>('questions.csv');
   const [isCustomCsv, setIsCustomCsv] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<AppViewMode>(() => readViewModeFromUrl());
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER_STATE);
+  const [biFilter, setBiFilter] = useState<BiFilterState>(DEFAULT_BI_FILTER_STATE);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('mode');
+    if (raw !== null && raw !== 'dashboard' && raw !== 'report') {
+      params.set('mode', 'dashboard');
+      const nextUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+      window.history.replaceState(null, '', nextUrl);
+    }
+
+    const handlePopState = () => {
+      setViewMode(readViewModeFromUrl());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleChangeViewMode = useCallback((nextMode: AppViewMode) => {
+    setViewMode(nextMode);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') !== nextMode) {
+      params.set('mode', nextMode);
+      const nextUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+      window.history.pushState(null, '', nextUrl);
+    }
+  }, []);
 
   const loadRepoCsv = useCallback(async () => {
     setLoading(true);
@@ -65,20 +105,25 @@ export function App() {
     }
   }, [csvText, filter]);
 
+  const result = analysis?.data ?? null;
+
+  const biSlice = useMemo(
+    () => (result ? analyzeBiDashboardSlice(result, biFilter) : null),
+    [result, biFilter]
+  );
+
   const handleUploadCsv = useCallback((text: string, fileName: string) => {
     setCsvText(text);
     setSourceLabel(fileName);
     setIsCustomCsv(true);
     setLoadError(null);
-    setFilter((prev) => ({
-      ...DEFAULT_FILTER_STATE,
-      normalizeTools: prev.normalizeTools,
-      invertItem16: prev.invertItem16,
-    }));
+    setFilter(DEFAULT_FILTER_STATE);
+    setBiFilter(DEFAULT_BI_FILTER_STATE);
   }, []);
 
   const handleRestoreRepoCsv = useCallback(() => {
     setFilter(DEFAULT_FILTER_STATE);
+    setBiFilter(DEFAULT_BI_FILTER_STATE);
     void loadRepoCsv();
   }, [loadRepoCsv]);
 
@@ -86,6 +131,10 @@ export function App() {
     setFilter((prev) => ({
       ...prev,
       normalizeTools: !prev.normalizeTools,
+      tools: [],
+    }));
+    setBiFilter((prev) => ({
+      ...prev,
       tools: [],
     }));
   }, []);
@@ -111,8 +160,6 @@ export function App() {
     filter.tools.length > 0 ||
     filter.frequencies.length > 0;
 
-  const result = analysis?.data ?? null;
-
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F6F3] text-[#142027]">
       <HeaderBar
@@ -121,12 +168,14 @@ export function App() {
         totalRaw={result?.cleaning.totalRaw ?? 0}
         totalValid={result?.cleaning.totalValid ?? 0}
         normalizeTools={filter.normalizeTools}
+        viewMode={viewMode}
+        onChangeViewMode={handleChangeViewMode}
         onToggleNormalizeTools={handleToggleNormalizeTools}
         onUploadCsv={handleUploadCsv}
         onRestoreRepoCsv={handleRestoreRepoCsv}
       />
 
-      {result && (
+      {viewMode === 'report' && result && (
         <FilterBar
           filter={filter}
           availableSeniorities={result.availableFilterOptions.seniorities}
@@ -144,9 +193,15 @@ export function App() {
         />
       )}
 
-      <TabNav activeTab={activeTab} onSelectTab={setActiveTab} />
+      {viewMode === 'report' && (
+        <TabNav activeTab={activeTab} onSelectTab={setActiveTab} />
+      )}
 
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6">
+      <main
+        className={`mx-auto w-full max-w-[1440px] flex-1 px-4 sm:px-6 ${
+          viewMode === 'dashboard' ? 'py-4' : 'py-6'
+        }`}
+      >
         {loading && (
           <div className="card-editorial p-8 text-center text-sm text-[#43535B]">
             Carregando e processando dados do survey (<code className="font-mono-tabular">/questions.csv</code>)...
@@ -166,7 +221,21 @@ export function App() {
           </Callout>
         )}
 
-        {!loading && result && (
+        {!loading && result && viewMode === 'dashboard' && biSlice && (
+          <BiDashboardPage
+            result={result}
+            slice={biSlice}
+            biFilter={biFilter}
+            onChangeBiFilter={setBiFilter}
+            onResetBiFilter={() => setBiFilter(DEFAULT_BI_FILTER_STATE)}
+            onSwitchToReport={(tab) => {
+              if (tab) setActiveTab(tab);
+              handleChangeViewMode('report');
+            }}
+          />
+        )}
+
+        {!loading && result && viewMode === 'report' && (
           <div
             role="tabpanel"
             id={`panel-${activeTab}`}

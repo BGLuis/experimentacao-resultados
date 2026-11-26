@@ -1,6 +1,17 @@
 import { useRef, useState } from 'react';
-import { Database, FileSpreadsheet, RotateCcw, SlidersHorizontal, Upload, X } from 'lucide-react';
+import {
+  Database,
+  FileSpreadsheet,
+  FileText,
+  LayoutDashboard,
+  RotateCcw,
+  SlidersHorizontal,
+  Upload,
+  X,
+} from 'lucide-react';
 import { Badge } from './UiPrimitives';
+
+export type AppViewMode = 'dashboard' | 'report';
 
 interface HeaderBarProps {
   sourceLabel: string;
@@ -8,6 +19,8 @@ interface HeaderBarProps {
   totalRaw: number;
   totalValid: number;
   normalizeTools: boolean;
+  viewMode: AppViewMode;
+  onChangeViewMode: (mode: AppViewMode) => void;
   onToggleNormalizeTools: () => void;
   onUploadCsv: (csvText: string, fileName: string) => void;
   onRestoreRepoCsv: () => void;
@@ -19,6 +32,8 @@ export function HeaderBar({
   totalRaw,
   totalValid,
   normalizeTools,
+  viewMode,
+  onChangeViewMode,
   onToggleNormalizeTools,
   onUploadCsv,
   onRestoreRepoCsv,
@@ -80,47 +95,95 @@ export function HeaderBar({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[#D5DDD6] bg-[#EDF1EC] px-3 py-1.5 text-xs font-medium text-[#142027] hover:bg-[#E4EAE3] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={normalizeTools}
-                onChange={onToggleNormalizeTools}
-                className="h-3.5 w-3.5 rounded border-[#5C6D75] accent-[#1F4E8C]"
-              />
-              <SlidersHorizontal className="h-3.5 w-3.5 text-[#43535B]" aria-hidden="true" />
-              <span>
-                Normalizar ferramentas (<code className="font-mono-tabular text-[11px]">kiro aws → Kiro</code>)
-              </span>
-            </label>
-
-            <button
-              type="button"
-              onClick={() => setDropzoneOpen((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1F4E8C] px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[#183E70]"
+          <div className="flex flex-col gap-2 lg:items-end">
+            <div
+              role="tablist"
+              aria-label="Modo de visualização"
+              className="inline-flex w-fit flex-wrap items-center gap-1 rounded-xl border border-[#B8C4B9] bg-[#EDF1EC] p-1 shadow-xs"
             >
-              <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-              Carregar CSV
-            </button>
+              <button
+                type="button"
+                role="tab"
+                id="mode-tab-dashboard"
+                aria-selected={viewMode === 'dashboard'}
+                onClick={() => onChangeViewMode('dashboard')}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+                  viewMode === 'dashboard'
+                    ? 'bg-[#1F4E8C] text-white shadow-sm'
+                    : 'text-[#43535B] hover:bg-white/80 hover:text-[#142027]'
+                }`}
+              >
+                <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Dashboard Interativo</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                    viewMode === 'dashboard'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[#D5DDD6] text-[#43535B]'
+                  }`}
+                >
+                  BI Canvas
+                </span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="mode-tab-report"
+                aria-selected={viewMode === 'report'}
+                onClick={() => onChangeViewMode('report')}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+                  viewMode === 'report'
+                    ? 'bg-[#1F4E8C] text-white shadow-sm'
+                    : 'text-[#43535B] hover:bg-white/80 hover:text-[#142027]'
+                }`}
+              >
+                <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Relatório Analítico (6 Abas)</span>
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={onRestoreRepoCsv}
-              disabled={!isCustomCsv}
-              title={
-                isCustomCsv
-                  ? 'Restaurar o arquivo /questions.csv padrão do repositório'
-                  : 'Já está utilizando o CSV padrão do repositório'
-              }
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                isCustomCsv
-                  ? 'border-[#D5DDD6] bg-white text-[#142027] hover:bg-[#EDF1EC]'
-                  : 'border-[#D5DDD6] bg-[#F4F6F3] text-[#5C6D75] opacity-60 cursor-not-allowed'
-              }`}
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              Restaurar CSV do repositório
-            </button>
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <label className="inline-flex items-center gap-2 rounded-lg border border-[#D5DDD6] bg-[#EDF1EC] px-3 py-1.5 text-xs font-medium text-[#142027] hover:bg-[#E4EAE3] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={normalizeTools}
+                  onChange={onToggleNormalizeTools}
+                  className="h-3.5 w-3.5 rounded border-[#5C6D75] accent-[#1F4E8C]"
+                />
+                <SlidersHorizontal className="h-3.5 w-3.5 text-[#43535B]" aria-hidden="true" />
+                <span>
+                  Normalizar ferramentas (<code className="font-mono-tabular text-[11px]">kiro aws → Kiro</code>)
+                </span>
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setDropzoneOpen((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1F4E8C] px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[#183E70]"
+              >
+                <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                Carregar CSV
+              </button>
+
+              <button
+                type="button"
+                onClick={onRestoreRepoCsv}
+                disabled={!isCustomCsv}
+                title={
+                  isCustomCsv
+                    ? 'Restaurar o arquivo /questions.csv padrão do repositório'
+                    : 'Já está utilizando o CSV padrão do repositório'
+                }
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  isCustomCsv
+                    ? 'border-[#D5DDD6] bg-white text-[#142027] hover:bg-[#EDF1EC]'
+                    : 'border-[#D5DDD6] bg-[#F4F6F3] text-[#5C6D75] opacity-60 cursor-not-allowed'
+                }`}
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Restaurar CSV do repositório
+              </button>
+            </div>
           </div>
         </div>
 

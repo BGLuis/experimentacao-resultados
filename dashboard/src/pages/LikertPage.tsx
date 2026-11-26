@@ -2,12 +2,15 @@ import { useMemo } from 'react';
 import type { EChartsOption } from 'echarts';
 import { ArrowLeftRight, TrendingDown } from 'lucide-react';
 import type { ConstructDescriptiveStats, LikertItemStats, SurveyAnalysisResult } from '../stats/types';
+import {
+  buildFullDumbbellProfileOption,
+  computeDumbbellSummaries,
+} from '../stats/biChartBuilders';
 import { EChart } from '../components/EChart';
 import { Badge, Callout, SectionHeader } from '../components/UiPrimitives';
 import {
   COLORS,
   LIKERT_COLORS,
-  SENIORITY_COLORS,
   fmtCI,
   fmtModes,
   fmtNum,
@@ -372,89 +375,13 @@ export function LikertPage({
     };
   }, [agreementRows]);
 
-  const slopeOption = useMemo<EChartsOption>(() => {
-    const pairs = paired.pairs;
-    const respondentSeries = pairs.map((p) => {
-      const color = SENIORITY_COLORS[p.seniority] ?? COLORS.primary;
-      return {
-        name: `${p.idLabel} (${p.seniority})`,
-        type: 'line' as const,
-        data: [p.cVel, p.cQual],
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { color, width: 1.6, opacity: 0.45 },
-        itemStyle: { color, opacity: 0.75 },
-        emphasis: {
-          focus: 'series' as const,
-          lineStyle: { width: 3, opacity: 1 },
-          itemStyle: { opacity: 1 },
-        },
-      };
-    });
-
-    if (paired.cVelMedian !== null && paired.cQualMedian !== null) {
-      respondentSeries.push({
-        name: 'Mediana da amostra',
-        type: 'line' as const,
-        data: [paired.cVelMedian, paired.cQualMedian],
-        symbol: 'diamond',
-        symbolSize: 11,
-        lineStyle: { color: COLORS.textPrimary, width: 3.5, opacity: 1 },
-        itemStyle: { color: COLORS.textPrimary, opacity: 1 },
-        emphasis: {
-          focus: 'series' as const,
-          lineStyle: { width: 4, opacity: 1 },
-          itemStyle: { opacity: 1 },
-        },
-      });
-    }
-
-    return {
-      tooltip: {
-        trigger: 'item',
-        formatter: (params: unknown) => {
-          const p = params as { seriesName: string; seriesIndex: number; value: number };
-          const pair = pairs[p.seriesIndex];
-          if (!pair) {
-            return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;">
-              <strong>Mediana da amostra</strong><br/>
-              C_VEL: <span style="font-family:'IBM Plex Mono',monospace;">${fmtNum(paired.cVelMedian, 2)}</span> →
-              C_QUAL: <span style="font-family:'IBM Plex Mono',monospace;">${fmtNum(paired.cQualMedian, 2)}</span>
-            </div>`;
-          }
-          return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;">
-            <strong>${pair.idLabel} · ${pair.seniority}</strong><br/>
-            C_VEL: <span style="font-family:'IBM Plex Mono',monospace;">${fmtNum(pair.cVel, 2)}</span> →
-            C_QUAL: <span style="font-family:'IBM Plex Mono',monospace;">${fmtNum(pair.cQual, 2)}</span><br/>
-            Diferença (QUAL − VEL): <strong style="font-family:'IBM Plex Mono',monospace;color:#B83B3B;">${fmtNum(pair.diff, 2)}</strong>
-          </div>`;
-        },
-      },
-      grid: { left: 68, right: 82, top: 28, bottom: 32, containLabel: true },
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: ['C_VEL\n(Velocidade)', 'C_QUAL\n(Qualidade)'],
-        axisLabel: {
-          fontFamily: 'IBM Plex Sans',
-          fontSize: 12,
-          fontWeight: 600,
-          lineHeight: 16,
-          color: COLORS.textPrimary,
-        },
-        axisLine: { lineStyle: { color: COLORS.border } },
-      },
-      yAxis: {
-        type: 'value',
-        min: 1,
-        max: 5,
-        interval: 0.5,
-        axisLabel: { fontFamily: 'IBM Plex Mono', fontSize: 11, color: COLORS.textMuted },
-        splitLine: { lineStyle: { color: '#EDF1EC' } },
-      },
-      series: respondentSeries,
-    };
-  }, [paired]);
+  const dumbbellOption = useMemo<EChartsOption>(() => {
+    const { constructRows, itemRows } = computeDumbbellSummaries(
+      filtered.validRespondents,
+      invertItem16
+    );
+    return buildFullDumbbellProfileOption({ constructRows, itemRows });
+  }, [filtered.validRespondents, invertItem16]);
 
   const constructRows: ConstructDescriptiveStats[] = [
     filtered.cVelStats,
@@ -532,8 +459,8 @@ export function LikertPage({
 
         <section className="card-editorial p-5 xl:col-span-5 space-y-4">
           <SectionHeader
-            title="Assimetria C_VEL → C_QUAL por Respondente"
-            subtitle="Comparação pareada intra-sujeito entre percepção de velocidade e percepção de qualidade."
+            title="Dumbbell & Perfil Multidimensional (C_VEL vs C_QUAL)"
+            subtitle="Assimetria por estrato de senioridade (C_QUAL vs C_VEL) e perfil por item (Jr+Pl vs Sênior, mediana geral e % ≥ 4)."
             badge={{ label: 'Exploratória · Pareada', variant: 'exploratory' }}
           />
 
@@ -562,27 +489,37 @@ export function LikertPage({
           </div>
 
           <EChart
-            option={slopeOption}
-            height={285}
-            ariaLabel="Slopegraph exploratório ligando C_VEL a C_QUAL para cada respondente"
+            option={dumbbellOption}
+            height={380}
+            ariaLabel="Gráfico Dumbbell e perfil multidimensional comparando C_VEL e C_QUAL por estrato de senioridade e por item"
           />
 
-          <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#43535B]">
-            <span className="inline-flex items-center gap-1">
-              <TrendingDown className="h-3.5 w-3.5 text-[#1F4E8C]" aria-hidden="true" />
-              Cores por senioridade:
-            </span>
-            {(['Júnior', 'Pleno', 'Sênior'] as const).map((sen) => (
-              <span key={sen} className="inline-flex items-center gap-1 font-medium">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: SENIORITY_COLORS[sen] }}
-                />
-                {sen}
-              </span>
-            ))}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-[#43535B]">
             <span className="inline-flex items-center gap-1 font-semibold text-[#142027]">
-              <span className="inline-block h-0.5 w-4 bg-[#142027]" /> Mediana
+              <TrendingDown className="h-3.5 w-3.5 text-[#1F4E8C]" aria-hidden="true" />
+              Construtos:
+            </span>
+            <span className="inline-flex items-center gap-1 font-medium">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#2F7A5C]" />
+              C_QUAL
+            </span>
+            <span className="inline-flex items-center gap-1 font-medium">
+              <span className="inline-block h-2.5 w-2.5 rotate-45 bg-[#1F4E8C]" />
+              C_VEL
+            </span>
+            <span className="text-[#CBD5E1]">|</span>
+            <span className="font-semibold text-[#142027]">Itens:</span>
+            <span className="inline-flex items-center gap-1 font-medium">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#B8721F]" />
+              Jr+Pl
+            </span>
+            <span className="inline-flex items-center gap-1 font-medium">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#1F4E8C]" />
+              Sênior
+            </span>
+            <span className="inline-flex items-center gap-1 font-medium text-[#142027]">
+              <span className="inline-block h-3 w-0.5 bg-[#142027]" />
+              Mediana geral (% ≥ 4 nos rótulos)
             </span>
           </div>
         </section>

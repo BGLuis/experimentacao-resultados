@@ -21,6 +21,8 @@ import type {
 } from './types';
 
 export * from './types';
+export * from './biCrossFilter';
+export * from './biChartBuilders';
 export {
   FREQUENCY_ORDER,
   ITEM_METADATA,

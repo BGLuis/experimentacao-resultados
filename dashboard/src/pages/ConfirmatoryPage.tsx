@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
 import { ChevronDown, ChevronRight, Lock, Layers } from 'lucide-react';
 import type {
-  GroupSummary,
   KruskalWallisResult,
   MannWhitneyResult,
-  SeniorityLevel,
   SurveyAnalysisResult,
 } from '../stats/types';
+import {
+  buildQp4JointMatrixOption,
+  buildRaincloudOption,
+} from '../stats/biChartBuilders';
 import { EChart } from '../components/EChart';
 import { Badge, Callout, SectionHeader } from '../components/UiPrimitives';
 import {
@@ -21,213 +23,6 @@ import {
 interface ConfirmatoryPageProps {
   result: SurveyAnalysisResult;
   hasActiveFilter: boolean;
-}
-
-function deterministicJitter(seed: number, amplitude: number): number {
-  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
-  const frac = x - Math.floor(x);
-  return (frac * 2 - 1) * amplitude;
-}
-
-function buildBoxplotWithJitterOption(
-  title: string,
-  groups: GroupSummary[],
-  colorMap: Record<string, string>
-): EChartsOption {
-  const categories = groups.map((g) => `${g.group} (n=${g.n})`);
-
-  const boxData = groups.map((g) => [
-    g.min ?? 0,
-    g.q1 ?? 0,
-    g.median ?? 0,
-    g.q3 ?? 0,
-    g.max ?? 0,
-  ]);
-
-  const scatterData: Array<{ value: [number, number]; itemStyle: { color: string } }> = [];
-  groups.forEach((g, gIdx) => {
-    const col = colorMap[g.group] ?? COLORS.primary;
-    g.values.forEach((v, i) => {
-      const jitter = deterministicJitter(gIdx * 100 + i + 1, 0.16);
-      scatterData.push({
-        value: [gIdx + jitter, v],
-        itemStyle: { color: col },
-      });
-    });
-  });
-
-  return {
-    title: {
-      text: title,
-      left: 8,
-      top: 0,
-      textStyle: { fontFamily: 'IBM Plex Sans', fontSize: 13, fontWeight: 600, color: COLORS.textPrimary },
-    },
-    tooltip: {
-      trigger: 'item',
-      formatter: (params: unknown) => {
-        const p = params as { seriesType: string; dataIndex: number; value: number[] };
-        if (p.seriesType === 'boxplot') {
-          const g = groups[p.dataIndex];
-          if (!g) return '';
-          return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;">
-            <strong>${g.group} (n = ${g.n})</strong><br/>
-            Máx: <span class="font-mono">${fmtNum(g.max, 2)}</span> · Q3: ${fmtNum(g.q3, 2)}<br/>
-            Mediana: <strong>${fmtNum(g.median, 2)}</strong> · MAD: ${fmtNum(g.mad, 2)}<br/>
-            Q1: ${fmtNum(g.q1, 2)} · Mín: ${fmtNum(g.min, 2)}
-          </div>`;
-        }
-        return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;">
-          Escore individual: <strong style="font-family:'IBM Plex Mono',monospace;">${fmtNum(p.value[1], 2)}</strong>
-        </div>`;
-      },
-    },
-    grid: { left: 40, right: 20, top: 38, bottom: 26, containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: categories,
-      axisLabel: { fontFamily: 'IBM Plex Sans', fontSize: 11, fontWeight: 600, color: COLORS.textPrimary },
-      axisLine: { lineStyle: { color: COLORS.border } },
-    },
-    yAxis: {
-      type: 'value',
-      min: 1,
-      max: 5.15,
-      interval: 1,
-      axisLabel: { fontFamily: 'IBM Plex Mono', fontSize: 11, color: COLORS.textMuted },
-      splitLine: { lineStyle: { color: '#EDF1EC' } },
-    },
-    series: [
-      {
-        name: 'Boxplot',
-        type: 'boxplot',
-        boxWidth: [24, 48],
-        data: boxData,
-        itemStyle: {
-          color: 'rgba(31, 78, 140, 0.12)',
-          borderColor: COLORS.primary,
-          borderWidth: 1.8,
-        },
-      },
-      {
-        name: 'Respondentes',
-        type: 'scatter',
-        symbolSize: 7,
-        data: scatterData.map((d) => ({
-          value: d.value,
-          itemStyle: { color: d.itemStyle.color, opacity: 0.8, borderColor: '#FFF', borderWidth: 1 },
-        })),
-      },
-    ],
-  };
-}
-
-function buildStripMedianMadOption(
-  title: string,
-  groups: GroupSummary[],
-  colorMap: Record<string, string>
-): EChartsOption {
-  const categories = groups.map((g) => `${g.group} (n=${g.n})`);
-  const scatterData: Array<{ value: [number, number]; itemStyle: { color: string } }> = [];
-  groups.forEach((g, gIdx) => {
-    const col = colorMap[g.group] ?? COLORS.primary;
-    g.values.forEach((v, i) => {
-      const jitter = deterministicJitter(gIdx * 200 + i + 7, 0.15);
-      scatterData.push({
-        value: [gIdx + jitter, v],
-        itemStyle: { color: col },
-      });
-    });
-  });
-
-  return {
-    title: {
-      text: title,
-      left: 8,
-      top: 0,
-      textStyle: { fontFamily: 'IBM Plex Sans', fontSize: 13, fontWeight: 600, color: COLORS.textPrimary },
-    },
-    tooltip: {
-      trigger: 'item',
-      formatter: (params: unknown) => {
-        const p = params as { seriesName: string; dataIndex: number; value: number[] };
-        if (p.seriesName === 'Mediana ± MAD') {
-          const g = groups[p.dataIndex];
-          if (!g) return '';
-          return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;">
-            <strong>${g.group} (n = ${g.n})</strong><br/>
-            Mediana: <strong style="font-family:'IBM Plex Mono',monospace;">${fmtNum(g.median, 2)}</strong><br/>
-            MAD: <span style="font-family:'IBM Plex Mono',monospace;">±${fmtNum(g.mad, 2)}</span>
-          </div>`;
-        }
-        return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;">
-          Escore individual: <strong style="font-family:'IBM Plex Mono',monospace;">${fmtNum(p.value[1], 2)}</strong>
-        </div>`;
-      },
-    },
-    grid: { left: 40, right: 20, top: 38, bottom: 26, containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: categories,
-      axisLabel: { fontFamily: 'IBM Plex Sans', fontSize: 11, fontWeight: 600, color: COLORS.textPrimary },
-      axisLine: { lineStyle: { color: COLORS.border } },
-    },
-    yAxis: {
-      type: 'value',
-      min: 1,
-      max: 5.15,
-      interval: 1,
-      axisLabel: { fontFamily: 'IBM Plex Mono', fontSize: 11, color: COLORS.textMuted },
-      splitLine: { lineStyle: { color: '#EDF1EC' } },
-    },
-    series: [
-      {
-        name: 'Respondentes',
-        type: 'scatter',
-        symbolSize: 8,
-        data: scatterData.map((d) => ({
-          value: d.value,
-          itemStyle: { color: d.itemStyle.color, opacity: 0.72, borderColor: '#FFF', borderWidth: 1 },
-        })),
-      },
-      {
-        name: 'Mediana ± MAD',
-        type: 'custom',
-        renderItem: (_params, api) => {
-          const idx = api.value(0) as number;
-          const med = api.value(1) as number;
-          const mad = api.value(2) as number;
-          const low = Math.max(1, med - mad);
-          const high = Math.min(5, med + mad);
-          const ptMed = api.coord([idx, med]);
-          const ptLow = api.coord([idx, low]);
-          const ptHigh = api.coord([idx, high]);
-
-          return {
-            type: 'group',
-            children: [
-              {
-                type: 'line',
-                shape: { x1: ptLow[0], y1: ptLow[1], x2: ptHigh[0], y2: ptHigh[1] },
-                style: { stroke: COLORS.textPrimary, lineWidth: 2.5 },
-              },
-              {
-                type: 'line',
-                shape: { x1: ptMed[0] - 18, y1: ptMed[1], x2: ptMed[0] + 18, y2: ptMed[1] },
-                style: { stroke: COLORS.textPrimary, lineWidth: 3 },
-              },
-              {
-                type: 'circle',
-                shape: { cx: ptMed[0], cy: ptMed[1], r: 5 },
-                style: { fill: COLORS.textPrimary, stroke: '#FFFFFF', lineWidth: 1.5 },
-              },
-            ],
-          };
-        },
-        data: groups.map((g, idx) => [idx, g.median ?? 0, g.mad ?? 0]),
-      },
-    ],
-  };
 }
 
 function Qp3TestSummaryCard({
@@ -317,162 +112,34 @@ export function ConfirmatoryPage({ result, hasActiveFilter }: ConfirmatoryPagePr
 
   const showingMerged = qp3.mergeApplied && !showThreeLevels;
 
-  const groupColors: Record<string, string> = {
-    'Jr+Pl': '#B8721F',
-    Júnior: SENIORITY_COLORS.Júnior,
-    Pleno: SENIORITY_COLORS.Pleno,
-    Sênior: SENIORITY_COLORS.Sênior,
-    Sr: SENIORITY_COLORS.Sênior,
-  };
+  const qp3VelOption = useMemo<EChartsOption>(
+    () =>
+      buildRaincloudOption({
+        title: 'C_VEL — Velocidade (Raincloud: Half-Violin KDE + Strip + Mediana/IQR/MAD)',
+        groups:
+          showingMerged && qp3.cVelMannWhitneyMerged
+            ? qp3.cVelMannWhitneyMerged.groups
+            : qp3.cVelKruskalWallis.groups,
+      }),
+    [showingMerged, qp3]
+  );
 
-  const qp3VelOption = useMemo<EChartsOption>(() => {
-    if (showingMerged && qp3.cVelMannWhitneyMerged) {
-      return buildBoxplotWithJitterOption(
-        'C_VEL — Velocidade (Jr+Pl vs Sênior)',
-        qp3.cVelMannWhitneyMerged.groups,
-        groupColors
-      );
-    }
-    if (qp3.minGroupSize < 8) {
-      return buildStripMedianMadOption(
-        'C_VEL — 3 Níveis (Strip Plot + Mediana/MAD, n_g < 8)',
-        qp3.cVelKruskalWallis.groups,
-        groupColors
-      );
-    }
-    return buildBoxplotWithJitterOption(
-      'C_VEL — 3 Níveis (Boxplot + Jitter)',
-      qp3.cVelKruskalWallis.groups,
-      groupColors
-    );
-  }, [showingMerged, qp3]);
+  const qp3QualOption = useMemo<EChartsOption>(
+    () =>
+      buildRaincloudOption({
+        title: 'C_QUAL — Qualidade (Raincloud: Half-Violin KDE + Strip + Mediana/IQR/MAD)',
+        groups:
+          showingMerged && qp3.cQualMannWhitneyMerged
+            ? qp3.cQualMannWhitneyMerged.groups
+            : qp3.cQualKruskalWallis.groups,
+      }),
+    [showingMerged, qp3]
+  );
 
-  const qp3QualOption = useMemo<EChartsOption>(() => {
-    if (showingMerged && qp3.cQualMannWhitneyMerged) {
-      return buildBoxplotWithJitterOption(
-        'C_QUAL — Qualidade (Jr+Pl vs Sênior)',
-        qp3.cQualMannWhitneyMerged.groups,
-        groupColors
-      );
-    }
-    if (qp3.minGroupSize < 8) {
-      return buildStripMedianMadOption(
-        'C_QUAL — 3 Níveis (Strip Plot + Mediana/MAD, n_g < 8)',
-        qp3.cQualKruskalWallis.groups,
-        groupColors
-      );
-    }
-    return buildBoxplotWithJitterOption(
-      'C_QUAL — 3 Níveis (Boxplot + Jitter)',
-      qp3.cQualKruskalWallis.groups,
-      groupColors
-    );
-  }, [showingMerged, qp3]);
-
-  const scatterOption = useMemo<EChartsOption>(() => {
-    const pts = qp4.scatterPoints;
-    // Simple OLS trend line on unjittered (mRev, cQual)
-    const n = pts.length;
-    let trendData: Array<[number, number]> = [];
-    if (n >= 2) {
-      const meanX = pts.reduce((s, p) => s + p.mRev, 0) / n;
-      const meanY = pts.reduce((s, p) => s + p.cQual, 0) / n;
-      const num = pts.reduce((s, p) => s + (p.mRev - meanX) * (p.cQual - meanY), 0);
-      const den = pts.reduce((s, p) => s + (p.mRev - meanX) ** 2, 0);
-      const slope = den > 0 ? num / den : 0;
-      const intercept = meanY - slope * meanX;
-      const xs = pts.map((p) => p.mRev);
-      const minX = Math.min(...xs);
-      const maxX = Math.max(...xs);
-      trendData = [
-        [minX, intercept + slope * minX],
-        [maxX, intercept + slope * maxX],
-      ];
-    }
-
-    const seniorities: SeniorityLevel[] = ['Júnior', 'Pleno', 'Sênior'];
-    const scatterSeries = seniorities.map((sen) => {
-      const subset = pts.filter((p) => p.seniority === sen);
-      return {
-        name: sen,
-        type: 'scatter' as const,
-        symbolSize: 10,
-        itemStyle: {
-          color: SENIORITY_COLORS[sen],
-          opacity: 0.85,
-          borderColor: '#FFFFFF',
-          borderWidth: 1.5,
-        },
-        data: subset.map((p) => ({
-          value: [
-            p.mRev + deterministicJitter(p.rowNumber * 3 + 1, 0.08),
-            p.cQual + deterministicJitter(p.rowNumber * 7 + 2, 0.05),
-          ],
-          rawPoint: p,
-        })),
-      };
-    });
-
-    return {
-      tooltip: {
-        trigger: 'item',
-        formatter: (params: unknown) => {
-          const p = params as {
-            seriesName: string;
-            data?: { rawPoint?: (typeof pts)[number] };
-          };
-          const raw = p.data?.rawPoint;
-          if (!raw) return '';
-          return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;">
-            <strong>${raw.idLabel} · ${raw.seniority}</strong><br/>
-            Ferramenta: ${raw.tool} · ${raw.frequency}<br/>
-            M_REV (exato): <strong style="font-family:'IBM Plex Mono',monospace;">${fmtNum(raw.mRev, 2)}</strong><br/>
-            C_QUAL (exato): <strong style="font-family:'IBM Plex Mono',monospace;">${fmtNum(raw.cQual, 2)}</strong>
-          </div>`;
-        },
-      },
-      legend: {
-        top: 0,
-        left: 'center',
-        textStyle: { fontFamily: 'IBM Plex Sans', fontSize: 11, color: COLORS.textSecondary },
-      },
-      grid: { left: 26, right: 18, top: 44, bottom: 44, containLabel: true },
-      xAxis: {
-        type: 'value',
-        name: 'M_REV (Rigor de Revisão e Testes)',
-        nameLocation: 'middle',
-        nameGap: 26,
-        nameTextStyle: { fontFamily: 'IBM Plex Sans', fontSize: 11, fontWeight: 600, color: COLORS.textSecondary },
-        min: 1.5,
-        max: 5.2,
-        axisLabel: { fontFamily: 'IBM Plex Mono', fontSize: 11, color: COLORS.textMuted },
-        splitLine: { lineStyle: { color: '#EDF1EC' } },
-      },
-      yAxis: {
-        type: 'value',
-        name: 'C_QUAL (Qualidade Percebida)',
-        nameLocation: 'middle',
-        nameGap: 36,
-        nameRotate: 90,
-        nameTextStyle: { fontFamily: 'IBM Plex Sans', fontSize: 11, fontWeight: 600, color: COLORS.textSecondary },
-        min: 1.5,
-        max: 5.2,
-        axisLabel: { fontFamily: 'IBM Plex Mono', fontSize: 11, color: COLORS.textMuted },
-        splitLine: { lineStyle: { color: '#EDF1EC' } },
-      },
-      series: [
-        ...scatterSeries,
-        {
-          name: 'Tendência linear',
-          type: 'line',
-          symbol: 'none',
-          silent: true,
-          lineStyle: { color: COLORS.textPrimary, width: 2, type: 'dashed' },
-          data: trendData,
-        },
-      ],
-    };
-  }, [qp4]);
+  const qp4JointMatrixOption = useMemo<EChartsOption>(
+    () => buildQp4JointMatrixOption({ scatterPoints: qp4.scatterPoints }),
+    [qp4.scatterPoints]
+  );
 
   const sensitivityForestOption = useMemo<EChartsOption>(() => {
     const rows = [...qp4.sensitivity].reverse();
@@ -871,20 +538,43 @@ export function ConfirmatoryPage({ result, hasActiveFilter }: ConfirmatoryPagePr
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="rounded-lg border border-[#D5DDD6] bg-white p-3 xl:col-span-7">
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2 px-1">
+          <div className="rounded-lg border border-[#D5DDD6] bg-white p-3 xl:col-span-7 space-y-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
               <h3 className="text-sm font-semibold text-[#142027]">
-                Scatterplot M_REV × C_QUAL (por Senioridade)
+                Matriz Conjunta M_REV × C_QUAL + Histogramas Marginais
               </h3>
               <span className="text-[11px] text-[#5C6D75]">
-                Leve jitter determinístico para evitar sobreposição; tooltip mostra valores exatos
+                Bolhas dimensionadas por empates exatos (sem jitter artificial), faixas ordinais 3×3 e tendência linear OLS
               </span>
             </div>
             <EChart
-              option={scatterOption}
+              option={qp4JointMatrixOption}
               height={340}
-              ariaLabel="Gráfico de dispersão entre rigor de revisão M_REV e qualidade percebida C_QUAL colorido por senioridade"
+              ariaLabel="Matriz conjunta entre rigor de revisão M_REV e qualidade percebida C_QUAL com bolhas dimensionadas por empates exatos e histogramas marginais"
             />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[#EDF1EC] px-1 pt-2 text-[11px] text-[#43535B]">
+              <span className="font-semibold text-[#142027]">Senioridade dominante:</span>
+              {(['Júnior', 'Pleno', 'Sênior'] as const).map((sen) => (
+                <span key={sen} className="inline-flex items-center gap-1 font-medium">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: SENIORITY_COLORS[sen] }}
+                  />
+                  {sen}
+                </span>
+              ))}
+              <span className="inline-flex items-center gap-1.5 text-[#5C6D75]">
+                <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                  <span className="inline-block h-2 w-2 rounded-full border border-[#43535B] bg-[#CBD5E1]" />
+                  <span className="inline-block h-3.5 w-3.5 rounded-full border border-[#43535B] bg-[#CBD5E1]" />
+                </span>
+                n = 1..4+ empates exatos
+              </span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-[#142027]">
+                <span className="inline-block w-4 border-t-2 border-dashed border-[#142027]" />
+                Tendência OLS
+              </span>
+            </div>
           </div>
 
           <div className="rounded-lg border border-[#D5DDD6] bg-white p-3 xl:col-span-5">

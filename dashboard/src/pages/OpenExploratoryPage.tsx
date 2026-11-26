@@ -7,75 +7,18 @@ import type {
   OpenQuestionType,
   SeniorityLevel,
   SurveyAnalysisResult,
-  ThemeCount,
 } from '../stats/types';
+import {
+  buildPairedThemeButterflyOption,
+  buildSankeyData,
+  buildSankeyOption,
+} from '../stats/biChartBuilders';
 import { EChart } from '../components/EChart';
 import { Badge, Callout, SectionHeader } from '../components/UiPrimitives';
-import { COLORS, SENIORITY_COLORS, fmtNum, fmtPct, fmtPValue } from '../utils/format';
+import { COLORS, SENIORITY_COLORS, fmtNum, fmtPValue } from '../utils/format';
 
 interface OpenExploratoryPageProps {
   result: SurveyAnalysisResult;
-}
-
-function buildThemesOption(themes: ThemeCount[], color: string): EChartsOption {
-  const ordered = [...themes].reverse();
-  return {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      formatter: (params: unknown) => {
-        const arr = Array.isArray(params) ? params : [params];
-        const first = arr[0] as { dataIndex: number };
-        const t = ordered[first.dataIndex];
-        if (!t) return '';
-        return `<div style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;max-width:290px;white-space:normal;">
-          <strong>${t.label}</strong><br/>
-          <span style="color:#5C6D75;">${t.description}</span><br/>
-          Menções: <strong style="font-family:'IBM Plex Mono',monospace;">${t.count}</strong>
-          (${fmtPct(t.pctOfAnswered, 1)} das respondidas · ${fmtPct(t.pctOfTotalValid, 1)} dos válidos)
-        </div>`;
-      },
-    },
-    grid: { left: 8, right: 56, top: 10, bottom: 8, containLabel: true },
-    xAxis: {
-      type: 'value',
-      minInterval: 1,
-      axisLabel: { fontFamily: 'IBM Plex Mono', fontSize: 11, color: COLORS.textMuted },
-      splitLine: { lineStyle: { color: '#EDF1EC' } },
-    },
-    yAxis: {
-      type: 'category',
-      data: ordered.map((t) => t.label),
-      axisLabel: {
-        fontFamily: 'IBM Plex Sans',
-        fontSize: 11,
-        color: COLORS.textPrimary,
-        width: 175,
-        overflow: 'truncate',
-      },
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: COLORS.border } },
-    },
-    series: [
-      {
-        type: 'bar',
-        barMaxWidth: 20,
-        data: ordered.map((t) => t.count),
-        itemStyle: { color, borderRadius: [0, 4, 4, 0] },
-        label: {
-          show: true,
-          position: 'right',
-          fontFamily: 'IBM Plex Mono',
-          fontSize: 11,
-          color: COLORS.textSecondary,
-          formatter: (params: { dataIndex: number }) => {
-            const t = ordered[params.dataIndex];
-            return t ? `${t.count} (${fmtPct(t.pctOfAnswered, 0)})` : '';
-          },
-        },
-      },
-    ],
-  };
 }
 
 export function OpenExploratoryPage({ result }: OpenExploratoryPageProps) {
@@ -88,13 +31,23 @@ export function OpenExploratoryPage({ result }: OpenExploratoryPageProps) {
   const [showCodebook, setShowCodebook] = useState(false);
   const [splitMode, setSplitMode] = useState<'deadline' | 'median'>('deadline');
 
-  const riskOption = useMemo(
-    () => buildThemesOption(openCoding.risks.themes, COLORS.danger),
-    [openCoding.risks.themes]
+  const butterflyOption = useMemo<EChartsOption>(
+    () =>
+      buildPairedThemeButterflyOption({
+        riskThemes: openCoding.risks.themes,
+        benefitThemes: openCoding.benefits.themes,
+      }),
+    [openCoding.risks.themes, openCoding.benefits.themes]
   );
-  const benefitOption = useMemo(
-    () => buildThemesOption(openCoding.benefits.themes, COLORS.success),
-    [openCoding.benefits.themes]
+
+  const sankeyGraph = useMemo(
+    () => buildSankeyData(result.filtered.validRespondents, result.filter.normalizeTools),
+    [result.filtered.validRespondents, result.filter.normalizeTools]
+  );
+
+  const sankeyOption = useMemo<EChartsOption>(
+    () => buildSankeyOption({ graph: sankeyGraph }),
+    [sankeyGraph]
   );
 
   const allThemes: Array<CodebookCategory & { typeLabel: string }> = useMemo(
@@ -230,38 +183,29 @@ export function OpenExploratoryPage({ result }: OpenExploratoryPageProps) {
           }
         />
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="rounded-lg border border-[#D5DDD6] bg-[#FAFBF9] p-4 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-[#142027]">
-                Riscos Percebidos (ITEM_21)
-              </h3>
-              <span className="font-mono-tabular text-xs text-[#5C6D75]">
-                Substantivas: {openCoding.risks.substantiveCount} · Ruído/branco: {openCoding.risks.noiseOrBlankCount}
+        <div className="rounded-lg border border-[#D5DDD6] bg-[#FAFBF9] p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex flex-wrap items-center gap-2 rounded-md border border-[#E7BBBB] bg-[#FBEAEA] px-2.5 py-1 text-xs text-[#9A2E2E]">
+              <span className="font-semibold">Riscos (ITEM_21 · esquerda)</span>
+              <span className="font-mono-tabular">
+                Substantivas: {openCoding.risks.substantiveCount} · Ruído/branco:{' '}
+                {openCoding.risks.noiseOrBlankCount}
               </span>
             </div>
-            <EChart
-              option={riskOption}
-              height={260}
-              ariaLabel="Gráfico de barras horizontais dos temas de risco relatados no ITEM_21"
-            />
+            <div className="inline-flex flex-wrap items-center gap-2 rounded-md border border-[#B5DAC8] bg-[#E8F4EE] px-2.5 py-1 text-xs text-[#2F7A5C]">
+              <span className="font-semibold">Benefícios (ITEM_22 · direita)</span>
+              <span className="font-mono-tabular">
+                Substantivas: {openCoding.benefits.substantiveCount} · Ruído/branco:{' '}
+                {openCoding.benefits.noiseOrBlankCount}
+              </span>
+            </div>
           </div>
 
-          <div className="rounded-lg border border-[#D5DDD6] bg-[#FAFBF9] p-4 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-[#142027]">
-                Benefícios Técnicos Percebidos (ITEM_22)
-              </h3>
-              <span className="font-mono-tabular text-xs text-[#5C6D75]">
-                Substantivas: {openCoding.benefits.substantiveCount} · Ruído/branco: {openCoding.benefits.noiseOrBlankCount}
-              </span>
-            </div>
-            <EChart
-              option={benefitOption}
-              height={260}
-              ariaLabel="Gráfico de barras horizontais dos temas de benefício relatados no ITEM_22"
-            />
-          </div>
+          <EChart
+            option={butterflyOption}
+            height={290}
+            ariaLabel="Gráfico borboleta pareado comparando os temas mais citados de riscos (ITEM_21) e benefícios (ITEM_22)"
+          />
         </div>
 
         {/* Codebook + Cohen's Kappa Panel */}
@@ -432,6 +376,46 @@ export function OpenExploratoryPage({ result }: OpenExploratoryPageProps) {
               Nenhum relato encontrado com os filtros aplicados.
             </div>
           )}
+        </div>
+      </section>
+
+      {/* 4-Stage Sankey Flow */}
+      <section className="card-editorial p-5 space-y-4">
+        <SectionHeader
+          title="Diagrama de Fluxo Multidimensional (Sankey 4 Estágios)"
+          subtitle="Senioridade (M_SEN) → Ferramenta (M_TOOL) → Rigor de Revisão (M_REV) → Qualidade Percebida (C_QUAL)."
+          badge={{ label: `Exploratória · n = ${sankeyGraph.totalRespondents}`, variant: 'exploratory' }}
+        />
+
+        {sankeyGraph.nodes.length > 0 ? (
+          <EChart
+            option={sankeyOption}
+            height={320}
+            ariaLabel="Diagrama de fluxo Sankey em 4 estágios entre senioridade, ferramenta de IA, rigor M_REV e qualidade C_QUAL"
+          />
+        ) : (
+          <div className="rounded-lg border border-[#D5DDD6] bg-[#FAFBF9] py-10 text-center text-xs text-[#5C6D75]">
+            Nenhum respondente válido corresponde aos filtros ativos para construir o fluxo Sankey.
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[#5C6D75]">
+          <span>
+            Faixas ordinais de <code className="font-mono-tabular">M_REV</code> e{' '}
+            <code className="font-mono-tabular">C_QUAL</code>:
+          </span>
+          <span className="inline-flex items-center gap-1 font-medium text-[#142027]">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#B83B3B]" />
+            Baixo [1,0–2,5)
+          </span>
+          <span className="inline-flex items-center gap-1 font-medium text-[#142027]">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#B8721F]" />
+            Moderado [2,5–3,75)
+          </span>
+          <span className="inline-flex items-center gap-1 font-medium text-[#142027]">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2F7A5C]" />
+            Alto [3,75–5,0]
+          </span>
         </div>
       </section>
 
