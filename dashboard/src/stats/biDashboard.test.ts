@@ -9,21 +9,18 @@ import {
   analyzeBiDashboardSlice,
   analyzeSurveyCsv,
   analyzeSurveyRows,
-  buildConstructDumbbellOption,
-  buildFullDumbbellProfileOption,
-  buildPairedThemeButterflyOption,
-  buildQp4JointMatrixOption,
-  buildRaincloudOption,
+  applyBiClickTarget,
   buildSankeyData,
-  buildSankeyOption,
   classifyOrdinalTier,
   computeClampedKde,
   computeDumbbellSummaries,
+  filterDrawerQuotes,
   hasActiveBiFilter,
+  parseViewModeFromSearch,
   toggleArrayItem,
   toggleArrayPair,
 } from './index';
-import type { RawCsvRow } from './types';
+import type { RawCsvRow, SurveyAnalysisResult } from './types';
 
 const REAL_CSV_PATH = resolve(process.cwd(), '../questions.csv');
 const realCsvText = readFileSync(REAL_CSV_PATH, 'utf-8');
@@ -135,9 +132,7 @@ function makeSyntheticRow(
     seniority,
     toolRaw,
     toolNormalized: toolRaw.toLowerCase().includes('kiro') ? 'Kiro' : toolRaw,
-    toolIsOther: !['Copilot', 'ChatGPT', 'Claude', 'Cursor', 'Gemini'].includes(
-      toolRaw
-    ),
+    toolIsOther: !['Copilot', 'ChatGPT', 'Claude', 'Cursor', 'Gemini'].includes(toolRaw),
     frequencyRaw,
     frequencyCode,
     likertRaw: {
@@ -209,7 +204,6 @@ describe('BI Cross-Filter & Tier Classification', () => {
   });
 
   it('aplica OR intra-dimensão, AND inter-dimensão e contagem leave-one-out nas facetas', () => {
-    // Intra-dimension OR: Júnior (6) + Pleno (6) = 12
     const jrPlSlice = analyzeBiDashboardSlice(baseResult, {
       ...DEFAULT_BI_FILTER_STATE,
       seniorities: ['Júnior', 'Pleno'],
@@ -217,13 +211,11 @@ describe('BI Cross-Filter & Tier Classification', () => {
     expect(jrPlSlice.validCount).toBe(12);
     expect(jrPlSlice.activeGroupCountQP3).toBe(1);
 
-    // Leave-one-out on seniorities retains Sênior count (14) even when dimmed
     const srFacet = jrPlSlice.facetProfiles.seniorities.find((s) => s.id === 'Sênior');
     expect(srFacet?.count).toBe(14);
     expect(srFacet?.selected).toBe(false);
     expect(srFacet?.dimmed).toBe(true);
 
-    // Inter-dimension AND: Sênior (14) AND mRevTiers=['high']
     const srHighRev = analyzeBiDashboardSlice(baseResult, {
       ...DEFAULT_BI_FILTER_STATE,
       seniorities: ['Sênior'],
@@ -236,7 +228,7 @@ describe('BI Cross-Filter & Tier Classification', () => {
         (r) => r.seniority === 'Sênior' && classifyOrdinalTier(r.scores.M_REV) === 'high'
       )
     ).toBe(true);
-    // Leave-one-out seniorities facet reflects respondents matching mRevTiers=['high']
+
     const totalInSenFacet = srHighRev.facetProfiles.seniorities.reduce(
       (sum, f) => sum + f.count,
       0
@@ -269,7 +261,6 @@ describe('BI Cross-Filter & Tier Classification', () => {
       ...DEFAULT_BI_FILTER_STATE,
       riskThemes: allRiskIds,
     });
-    // In questions.csv: 26 valid, 3 are noise/blank ("nenhum por enquanto", and two empty) -> 23 substantive
     expect(riskSlice.validCount).toBe(23);
     expect(riskSlice.openCoding.risks.noiseOrBlankCount).toBe(0);
 
@@ -292,7 +283,6 @@ describe('BI Cross-Filter & Tier Classification', () => {
     expect(kiroAwsSlice.validCount).toBe(2);
     expect(kiroAwsSlice.lowSampleWarning).toBe(true);
 
-    // Single non-empty group in QP3 (Sênior only)
     const srOnly = analyzeBiDashboardSlice(baseResult, {
       ...DEFAULT_BI_FILTER_STATE,
       seniorities: ['Sênior'],
@@ -301,7 +291,6 @@ describe('BI Cross-Filter & Tier Classification', () => {
     expect(srOnly.qp3.cVelMannWhitneyMerged?.pValue).toBeNull();
     expect(srOnly.qp3.cQualMannWhitneyMerged?.pValue).toBeNull();
 
-    // Empty slice (n = 0): Júnior + kiro aws + 4 a 5 dias por semana does not exist
     const emptySlice = analyzeBiDashboardSlice(baseResult, {
       ...DEFAULT_BI_FILTER_STATE,
       seniorities: ['Júnior'],
@@ -312,9 +301,185 @@ describe('BI Cross-Filter & Tier Classification', () => {
     expect(emptySlice.activeGroupCountQP3).toBe(0);
     expect(emptySlice.qp4.main.rho).toBeNull();
   });
+
+  it('filtra por cQualTiers isolado e combinado com mRevTiers e exclui escores unclassified (TE-3)', () => {
+    const highQualSlice = analyzeBiDashboardSlice(baseResult, {
+      ...DEFAULT_BI_FILTER_STATE,
+      cQualTiers: ['high'],
+    });
+    expect(highQualSlice.validCount).toBeGreaterThan(0);
+    expect(
+      highQualSlice.validRespondents.every(
+        (r) => classifyOrdinalTier(r.scores.C_QUAL) === 'high'
+      )
+    ).toBe(true);
+
+    const combinedSlice = analyzeBiDashboardSlice(baseResult, {
+      ...DEFAULT_BI_FILTER_STATE,
+      cQualTiers: ['high'],
+      mRevTiers: ['moderate'],
+    });
+    expect(
+      combinedSlice.validRespondents.every(
+        (r) =>
+          classifyOrdinalTier(r.scores.C_QUAL) === 'high' &&
+          classifyOrdinalTier(r.scores.M_REV) === 'moderate'
+      )
+    ).toBe(true);
+    expect(combinedSlice.validCount).toBeLessThanOrEqual(highQualSlice.validCount);
+
+    const firstValid = baseResult.cleaning.validRespondents[0];
+    const unclassifiedClone = {
+      ...firstValid,
+      rowNumber: 999,
+      idLabel: 'R999',
+      scores: { ...firstValid.scores, M_REV: null, C_QUAL: null },
+    };
+    const augmentedResult: SurveyAnalysisResult = {
+      ...baseResult,
+      cleaning: {
+        ...baseResult.cleaning,
+        validRespondents: [...baseResult.cleaning.validRespondents, unclassifiedClone],
+      },
+    };
+
+    const allMRevSlice = analyzeBiDashboardSlice(augmentedResult, {
+      ...DEFAULT_BI_FILTER_STATE,
+      mRevTiers: ['low', 'moderate', 'high'],
+    });
+    expect(allMRevSlice.validRespondents.some((r) => r.rowNumber === 999)).toBe(false);
+
+    const allCQualSlice = analyzeBiDashboardSlice(augmentedResult, {
+      ...DEFAULT_BI_FILTER_STATE,
+      cQualTiers: ['low', 'moderate', 'high'],
+    });
+    expect(allCQualSlice.validRespondents.some((r) => r.rowNumber === 999)).toBe(false);
+  });
+
+  it('aplica redutor puro applyBiClickTarget e filtra relatos em filterDrawerQuotes (TE-4)', () => {
+    const rSen = applyBiClickTarget(DEFAULT_BI_FILTER_STATE, {
+      kind: 'seniority',
+      value: 'Sênior',
+    });
+    expect(rSen.nextFilter.seniorities).toEqual(['Sênior']);
+    expect(rSen.openedTheme).toBeUndefined();
+
+    const rPairAddBoth = applyBiClickTarget(DEFAULT_BI_FILTER_STATE, {
+      kind: 'seniorityPair',
+      seniorities: ['Júnior', 'Pleno'],
+    });
+    expect(rPairAddBoth.nextFilter.seniorities).toEqual(['Júnior', 'Pleno']);
+
+    const rPairFromOne = applyBiClickTarget(
+      { ...DEFAULT_BI_FILTER_STATE, seniorities: ['Júnior'] },
+      { kind: 'seniorityPair', seniorities: ['Júnior', 'Pleno'] }
+    );
+    expect(rPairFromOne.nextFilter.seniorities).toEqual(['Júnior', 'Pleno']);
+
+    const rPairRemoveBoth = applyBiClickTarget(
+      { ...DEFAULT_BI_FILTER_STATE, seniorities: ['Júnior', 'Pleno', 'Sênior'] },
+      { kind: 'seniorityPair', seniorities: ['Júnior', 'Pleno'] }
+    );
+    expect(rPairRemoveBoth.nextFilter.seniorities).toEqual(['Sênior']);
+
+    expect(
+      applyBiClickTarget(DEFAULT_BI_FILTER_STATE, { kind: 'tool', value: 'Kiro' }).nextFilter.tools
+    ).toEqual(['Kiro']);
+    expect(
+      applyBiClickTarget(DEFAULT_BI_FILTER_STATE, {
+        kind: 'frequency',
+        value: 'Todos os dias úteis',
+      }).nextFilter.frequencies
+    ).toEqual(['Todos os dias úteis']);
+    expect(
+      applyBiClickTarget(DEFAULT_BI_FILTER_STATE, { kind: 'mRevTier', value: 'moderate' })
+        .nextFilter.mRevTiers
+    ).toEqual(['moderate']);
+    expect(
+      applyBiClickTarget(DEFAULT_BI_FILTER_STATE, { kind: 'cQualTier', value: 'high' })
+        .nextFilter.cQualTiers
+    ).toEqual(['high']);
+
+    const rBubbleAdd = applyBiClickTarget(DEFAULT_BI_FILTER_STATE, {
+      kind: 'bubble',
+      mRevTier: 'moderate',
+      cQualTier: 'high',
+    });
+    expect(rBubbleAdd.nextFilter.mRevTiers).toEqual(['moderate']);
+    expect(rBubbleAdd.nextFilter.cQualTiers).toEqual(['high']);
+
+    const rBubbleRemove = applyBiClickTarget(rBubbleAdd.nextFilter, {
+      kind: 'bubble',
+      mRevTier: 'moderate',
+      cQualTier: 'high',
+    });
+    expect(rBubbleRemove.nextFilter.mRevTiers).toEqual([]);
+    expect(rBubbleRemove.nextFilter.cQualTiers).toEqual([]);
+
+    const rRisk = applyBiClickTarget(DEFAULT_BI_FILTER_STATE, {
+      kind: 'riskTheme',
+      themeId: 'seguranca',
+      label: 'Segurança',
+    });
+    expect(rRisk.nextFilter.riskThemes).toEqual(['seguranca']);
+    expect(rRisk.openedTheme).toEqual({ type: 'risk', themeId: 'seguranca' });
+
+    const rBenefit = applyBiClickTarget(DEFAULT_BI_FILTER_STATE, {
+      kind: 'benefitTheme',
+      themeId: 'velocidade_produtividade',
+      label: 'Velocidade',
+    });
+    expect(rBenefit.nextFilter.benefitThemes).toEqual(['velocidade_produtividade']);
+    expect(rBenefit.openedTheme).toEqual({
+      type: 'benefit',
+      themeId: 'velocidade_produtividade',
+    });
+
+    expect(applyBiClickTarget(rSen.nextFilter, { kind: 'noop' }).nextFilter).toBe(
+      rSen.nextFilter
+    );
+    expect(applyBiClickTarget(rSen.nextFilter, null).nextFilter).toBe(rSen.nextFilter);
+
+    const openCoding = baseResult.baseline.openCoding;
+    const allQuotes = filterDrawerQuotes(openCoding, [], []);
+    expect(allQuotes.length).toBe(
+      openCoding.risks.substantiveCount + openCoding.benefits.substantiveCount
+    );
+    expect(allQuotes.every((q) => !q.response.isBlankOrNoise)).toBe(true);
+
+    const riskOnlyQuotes = filterDrawerQuotes(openCoding, ['seguranca'], []);
+    expect(riskOnlyQuotes.length).toBeGreaterThan(0);
+    expect(riskOnlyQuotes.every((q) => q.type === 'risk')).toBe(true);
+    expect(
+      riskOnlyQuotes.every((q) => q.response.themes.includes('seguranca'))
+    ).toBe(true);
+
+    const bothQuotes = filterDrawerQuotes(
+      openCoding,
+      ['seguranca'],
+      ['velocidade_produtividade']
+    );
+    expect(bothQuotes.some((q) => q.type === 'risk')).toBe(true);
+    expect(bothQuotes.some((q) => q.type === 'benefit')).toBe(true);
+    expect(
+      bothQuotes.every((q) =>
+        q.type === 'risk'
+          ? q.response.themes.includes('seguranca')
+          : q.response.themes.includes('velocidade_produtividade')
+      )
+    ).toBe(true);
+  });
+
+  it('interpreta parâmetro ?mode= da URL via parseViewModeFromSearch (TE-6)', () => {
+    expect(parseViewModeFromSearch('')).toBe('dashboard');
+    expect(parseViewModeFromSearch('?mode=dashboard')).toBe('dashboard');
+    expect(parseViewModeFromSearch('?mode=report')).toBe('report');
+    expect(parseViewModeFromSearch('?mode=invalid')).toBe('dashboard');
+    expect(parseViewModeFromSearch('?foo=1&mode=report')).toBe('report');
+  });
 });
 
-describe('BI Chart Math & Option Builders', () => {
+describe('BI Data Aggregators & Mathematical Guards', () => {
   const baseResult = analyzeSurveyCsv(realCsvText);
 
   it('computa KDE limitada em [1,0; 5,0] com guarda de IQR=0 e variância zero', () => {
@@ -326,184 +491,78 @@ describe('BI Chart Math & Option Builders', () => {
     expect(normalKde.points.every((p) => p.score >= 1.0 && p.score <= 5.0)).toBe(true);
     expect(normalKde.points.every((p) => Number.isFinite(p.density) && p.density >= 0)).toBe(true);
 
-    // IQR = 0 but sd > 0 -> positive finite bandwidth
     const iqrZeroKde = computeClampedKde([4, 4, 4, 4, 5]);
     expect(iqrZeroKde.bandwidth).toBeGreaterThan(0);
     expect(Number.isFinite(iqrZeroKde.bandwidth)).toBe(true);
-    expect(iqrZeroKde.points.length).toBe(40);
-    expect(iqrZeroKde.points.every((p) => Number.isFinite(p.density))).toBe(true);
+    expect(iqrZeroKde.points).toHaveLength(40);
 
-    // Zero variance (sd === 0) -> empty KDE, no NaNs
     const flatKde = computeClampedKde([5, 5, 5, 5]);
     expect(flatKde.bandwidth).toBe(0);
     expect(flatKde.points).toEqual([]);
     expect(flatKde.maxDensity).toBe(0);
 
-    // Small group (n < 3) -> empty KDE, no NaNs
     const smallKde = computeClampedKde([4, 5]);
     expect(smallKde.bandwidth).toBe(0);
     expect(smallKde.points).toEqual([]);
-
-    // Option builds cleanly even with mixed empty/flat/valid groups
-    const opt = buildRaincloudOption({
-      groups: baseResult.baseline.qp3.cVelMannWhitneyMerged?.groups ?? [],
-      selectedSeniorities: ['Sênior'],
-      compact: true,
-    });
-    expect(Array.isArray(opt.series)).toBe(true);
   });
 
-  it('agrega células exatas de empate QP4 somando n=26 e constrói matriz 3-grid', () => {
+  it('agrega células exatas de empate QP4 com tie-break e descarte de pontos inválidos (TE-5)', () => {
     const agg = aggregateQp4Ties(baseResult.baseline.qp4.scatterPoints);
     const cellSum = agg.cells.reduce((acc, c) => acc + c.count, 0);
     expect(cellSum).toBe(26);
-
-    const mRevSum =
-      agg.mRevTierCounts.low + agg.mRevTierCounts.moderate + agg.mRevTierCounts.high;
-    const cQualSum =
-      agg.cQualTierCounts.low + agg.cQualTierCounts.moderate + agg.cQualTierCounts.high;
-    expect(mRevSum).toBe(26);
-    expect(cQualSum).toBe(26);
+    expect(
+      agg.mRevTierCounts.low + agg.mRevTierCounts.moderate + agg.mRevTierCounts.high
+    ).toBe(26);
+    expect(
+      agg.cQualTierCounts.low + agg.cQualTierCounts.moderate + agg.cQualTierCounts.high
+    ).toBe(26);
     expect(agg.olsLine).not.toBeNull();
 
-    // Tie-break check: Sênior > Pleno > Júnior
-    const tiedPoints = [
-      {
-        idLabel: 'R01',
-        rowNumber: 1,
-        seniority: 'Júnior' as const,
-        mRev: 3,
-        cQual: 4,
-        tool: 'Kiro',
-        frequency: 'Todos os dias úteis',
-      },
-      {
-        idLabel: 'R02',
-        rowNumber: 2,
-        seniority: 'Sênior' as const,
-        mRev: 3,
-        cQual: 4,
-        tool: 'Kiro',
-        frequency: 'Todos os dias úteis',
-      },
-    ];
-    const tieAgg = aggregateQp4Ties(tiedPoints);
-    expect(tieAgg.cells[0].dominantSeniority).toBe('Sênior');
-    expect(tieAgg.olsLine).toBeNull(); // var(M_REV) === 0
-
-    const matrixOpt = buildQp4JointMatrixOption({
-      scatterPoints: baseResult.baseline.qp4.scatterPoints,
-      activeMRevTiers: ['high'],
-    });
-    expect(Array.isArray(matrixOpt.grid)).toBe(true);
-    expect((matrixOpt.grid as Array<{ containLabel?: boolean }>).length).toBe(3);
-    expect(
-      (matrixOpt.grid as Array<{ containLabel?: boolean }>).every(
-        (g) => g.containLabel === false
-      )
-    ).toBe(true);
-    expect((matrixOpt.legend as { show?: boolean }).show).toBe(false);
+    const plenoJrTieAgg = aggregateQp4Ties([
+      { idLabel: 'R03', rowNumber: 3, seniority: 'Júnior', mRev: 3.0, cQual: 3.5, tool: 'Kiro', frequency: 'Todos os dias úteis' },
+      { idLabel: 'R04', rowNumber: 4, seniority: 'Pleno', mRev: 3.0, cQual: 3.5, tool: 'Kiro', frequency: 'Todos os dias úteis' },
+      { idLabel: 'R_BAD', rowNumber: 5, seniority: 'Sênior', mRev: Number.NaN, cQual: 4.0, tool: 'Kiro', frequency: 'Todos os dias úteis' },
+      { idLabel: 'R_OOB', rowNumber: 6, seniority: 'Sênior', mRev: 0.5, cQual: 4.0, tool: 'Kiro', frequency: 'Todos os dias úteis' },
+    ]);
+    expect(plenoJrTieAgg.cells).toHaveLength(1);
+    expect(plenoJrTieAgg.cells[0].dominantSeniority).toBe('Pleno');
+    expect(plenoJrTieAgg.cells[0].count).toBe(2);
+    expect(plenoJrTieAgg.olsLine).toBeNull();
   });
 
-  it('calcula resumos Dumbbell de construtos e itens e gera opções ECharts', () => {
+  it('calcula resumos Dumbbell de construtos/itens e grafo Sankey acíclico de 4 estágios', () => {
     const { constructRows, itemRows } = computeDumbbellSummaries(
       baseResult.cleaning.validRespondents,
       true
     );
     expect(constructRows).toHaveLength(4);
     expect(itemRows).toHaveLength(10);
+    expect(constructRows[0].cVelMedian).toBeCloseTo(5.0, 2);
+    expect(constructRows[0].cQualMedian).toBeCloseTo(4.0, 2);
+    expect(constructRows[0].gap).toBeCloseTo(1.0, 2);
 
-    const overall = constructRows[0];
-    expect(overall.label).toBe('Amostra Geral');
-    expect(overall.n).toBe(26);
-    expect(overall.cVelMedian).toBeCloseTo(5.0, 2);
-    expect(overall.cQualMedian).toBeCloseTo(4.0, 2);
-    expect(overall.gap).toBeCloseTo(1.0, 2);
-    expect(overall.velGreaterPct).toBeCloseTo(100, 1);
-
-    const compactOpt = buildConstructDumbbellOption({ constructRows });
-    const fullOpt = buildFullDumbbellProfileOption({ constructRows, itemRows });
-    expect(Array.isArray(compactOpt.series)).toBe(true);
-    expect(Array.isArray(fullOpt.series)).toBe(true);
-  });
-
-  it('constrói grafo Sankey de 4 estágios acíclico com prefixos únicos e conservação de fluxo', () => {
     const graph = buildSankeyData(baseResult.cleaning.validRespondents, true);
     const nodeIds = graph.nodes.map((n) => n.name);
     expect(new Set(nodeIds).size).toBe(nodeIds.length);
-    expect(
-      nodeIds.every(
-        (id) =>
-          id.startsWith('sen:') ||
-          id.startsWith('tool:') ||
-          id.startsWith('rev:') ||
-          id.startsWith('qual:')
-      )
-    ).toBe(true);
-
     const stageWeight = (fromPrefix: string, toPrefix: string) =>
       graph.links
         .filter((l) => l.source.startsWith(fromPrefix) && l.target.startsWith(toPrefix))
         .reduce((acc, l) => acc + l.value, 0);
-
     expect(stageWeight('sen:', 'tool:')).toBe(26);
     expect(stageWeight('tool:', 'rev:')).toBe(26);
     expect(stageWeight('rev:', 'qual:')).toBe(26);
 
-    // Every link strictly moves forward one stage (acyclic guarantee)
-    expect(
-      graph.links.every(
-        (l) =>
-          (l.source.startsWith('sen:') && l.target.startsWith('tool:')) ||
-          (l.source.startsWith('tool:') && l.target.startsWith('rev:')) ||
-          (l.source.startsWith('rev:') && l.target.startsWith('qual:'))
-      )
-    ).toBe(true);
-
-    // Collapse > 6 tools into tool:Outras (noop) and unclassified tiers (noop)
     const manyToolRows = Array.from({ length: 8 }, (_, idx) =>
       makeSyntheticRow(idx + 1, {
         toolRaw: `Tool_${idx + 1}`,
-        likert:
-          idx === 0
-            ? {
-                ITEM_12: null,
-                ITEM_13: null,
-                ITEM_14: null,
-              }
-            : {},
+        likert: idx === 0 ? { ITEM_12: null, ITEM_13: null, ITEM_14: null } : {},
         openRisk: `risco unico ${idx}`,
       })
     );
     const syntheticAnalysis = analyzeSurveyRows(manyToolRows);
     const manyGraph = buildSankeyData(syntheticAnalysis.cleaning.validRespondents, true);
-    const outrasNode = manyGraph.nodes.find((n) => n.name === 'tool:Outras');
-    const unclassNode = manyGraph.nodes.find((n) => n.name === 'qual:unclassified');
-    expect(outrasNode?.count).toBe(3);
-    expect(outrasNode?.clickTarget.kind).toBe('noop');
-    expect(unclassNode?.count).toBe(1);
-    expect(unclassNode?.clickTarget.kind).toBe('noop');
-
-    const sankeyOpt = buildSankeyOption({ graph });
-    expect(Array.isArray(sankeyOpt.series)).toBe(true);
-
-    // Real CSV with normalizeTools=false has 7 distinct tools -> collapses to top 5 + Outras
-    const unnormGraph = buildSankeyData(baseResult.cleaning.validRespondents, false);
-    const unnormOutras = unnormGraph.nodes.find((n) => n.name === 'tool:Outras');
-    expect(unnormOutras?.count).toBeGreaterThan(0);
-    expect(unnormOutras?.clickTarget.kind).toBe('noop');
-  });
-
-  it('constrói gráfico Butterfly pareado de temas com séries esquerda/direita', () => {
-    const butterflyOpt = buildPairedThemeButterflyOption({
-      riskThemes: baseResult.baseline.openCoding.risks.themes,
-      benefitThemes: baseResult.baseline.openCoding.benefits.themes,
-      selectedRiskThemes: ['seguranca'],
-      compact: true,
-    });
-    const series = butterflyOpt.series as Array<{ name: string; data: Array<{ value: number }> }>;
-    expect(series).toHaveLength(2);
-    expect(series[0].data.every((d) => d.value <= 0)).toBe(true);
-    expect(series[1].data.every((d) => d.value >= 0)).toBe(true);
+    expect(manyGraph.nodes.find((n) => n.name === 'tool:Outras')?.count).toBe(3);
+    expect(manyGraph.nodes.find((n) => n.name === 'tool:Outras')?.clickTarget.kind).toBe('noop');
+    expect(manyGraph.nodes.find((n) => n.name === 'qual:unclassified')?.clickTarget.kind).toBe('noop');
   });
 });

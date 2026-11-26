@@ -4,6 +4,7 @@ import {
   DEFAULT_FILTER_STATE,
   analyzeBiDashboardSlice,
   analyzeSurveyCsv,
+  parseViewModeFromSearch,
 } from './stats';
 import type { BiFilterState, FilterState } from './stats';
 import { HeaderBar, type AppViewMode } from './components/HeaderBar';
@@ -22,8 +23,7 @@ const REPO_CSV_PATH = '/questions.csv';
 
 function readViewModeFromUrl(): AppViewMode {
   if (typeof window === 'undefined') return 'dashboard';
-  const raw = new URLSearchParams(window.location.search).get('mode');
-  return raw === 'report' ? 'report' : 'dashboard';
+  return parseViewModeFromSearch(window.location.search);
 }
 
 export function App() {

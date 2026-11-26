@@ -97,15 +97,14 @@ export function HeaderBar({
 
           <div className="flex flex-col gap-2 lg:items-end">
             <div
-              role="tablist"
+              role="group"
               aria-label="Modo de visualização"
               className="inline-flex w-fit flex-wrap items-center gap-1 rounded-xl border border-[#B8C4B9] bg-[#EDF1EC] p-1 shadow-xs"
             >
               <button
                 type="button"
-                role="tab"
                 id="mode-tab-dashboard"
-                aria-selected={viewMode === 'dashboard'}
+                aria-pressed={viewMode === 'dashboard'}
                 onClick={() => onChangeViewMode('dashboard')}
                 className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
                   viewMode === 'dashboard'
@@ -127,9 +126,8 @@ export function HeaderBar({
               </button>
               <button
                 type="button"
-                role="tab"
                 id="mode-tab-report"
-                aria-selected={viewMode === 'report'}
+                aria-pressed={viewMode === 'report'}
                 onClick={() => onChangeViewMode('report')}
                 className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
                   viewMode === 'report'

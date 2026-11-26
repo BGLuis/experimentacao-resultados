@@ -140,6 +140,71 @@ export interface BiDashboardSlice {
   activeGroupCountQP3: number;
 }
 
+interface FacetCategorySpec {
+  id: string;
+  label: string;
+  tieBreakCount?: number;
+}
+
+/**
+ * Calcula contagens leave-one-out para uma faceta preservando o contexto de categorias não selecionadas.
+ */
+function buildLeaveOneOutFacet(params: {
+  allValid: ValidRespondent[];
+  biFilter: BiFilterState;
+  dimension: 'seniorities' | 'tools' | 'frequencies' | 'riskThemes' | 'benefitThemes';
+  selectedIds: readonly string[];
+  categories: readonly FacetCategorySpec[];
+  matchesCategory: (r: ValidRespondent, categoryId: string) => boolean;
+  matchesBiFilter: (
+    r: ValidRespondent,
+    f: BiFilterState,
+    omitDimension?: keyof BiFilterState
+  ) => boolean;
+  sortMode?: 'none' | 'count' | 'count_and_label';
+}): BiFacetBarItem[] {
+  const {
+    allValid,
+    biFilter,
+    dimension,
+    selectedIds,
+    categories,
+    matchesCategory,
+    matchesBiFilter,
+    sortMode = 'none',
+  } = params;
+
+  const pool = allValid.filter((r) => matchesBiFilter(r, biFilter, dimension));
+  const hasSelection = selectedIds.length > 0;
+
+  const mapped = categories.map((cat) => {
+    const count = pool.filter((r) => matchesCategory(r, cat.id)).length;
+    const selected = selectedIds.includes(cat.id);
+    return {
+      id: cat.id,
+      label: cat.label,
+      count,
+      pct: pool.length > 0 ? (count / pool.length) * 100 : 0,
+      selected,
+      dimmed: hasSelection && !selected,
+      tieBreakCount: cat.tieBreakCount ?? 0,
+    };
+  });
+
+  if (sortMode === 'count') {
+    mapped.sort((a, b) => b.count - a.count);
+  } else if (sortMode === 'count_and_label') {
+    mapped.sort(
+      (a, b) =>
+        b.count - a.count ||
+        b.tieBreakCount - a.tieBreakCount ||
+        a.label.localeCompare(b.label)
+    );
+  }
+
+  return mapped.map(({ tieBreakCount: _tie, ...item }) => item);
+}
+
 /**
  * Avalia uma fatia exploratória dinâmica do BI Dashboard mantendo o baseline confirmatório intacto.
  */
@@ -151,26 +216,17 @@ export function analyzeBiDashboardSlice(
   const normalizeTools = result.filter.normalizeTools;
   const baselineValidCount = result.baseline.validCount;
 
+  const baselineCoding = result.filter.normalizeTools
+    ? result.baseline.openCoding
+    : runOpenCoding(allValid, false);
+
   const riskThemesByRow = new Map<number, string[]>();
-  for (const resp of result.baseline.openCoding.risks.responses) {
+  for (const resp of baselineCoding.risks.responses) {
     riskThemesByRow.set(resp.rowNumber, resp.themes);
   }
   const benefitThemesByRow = new Map<number, string[]>();
-  for (const resp of result.baseline.openCoding.benefits.responses) {
+  for (const resp of baselineCoding.benefits.responses) {
     benefitThemesByRow.set(resp.rowNumber, resp.themes);
-  }
-
-  const hasMissingRows = allValid.some(
-    (r) => !riskThemesByRow.has(r.rowNumber) || !benefitThemesByRow.has(r.rowNumber)
-  );
-  if (hasMissingRows) {
-    const fallbackOpen = runOpenCoding(allValid, normalizeTools);
-    for (const resp of fallbackOpen.risks.responses) {
-      riskThemesByRow.set(resp.rowNumber, resp.themes);
-    }
-    for (const resp of fallbackOpen.benefits.responses) {
-      benefitThemesByRow.set(resp.rowNumber, resp.themes);
-    }
   }
 
   const getToolLabel = (r: ValidRespondent): string =>
@@ -239,21 +295,6 @@ export function analyzeBiDashboardSlice(
   const validRespondents = allValid.filter((r) => matchesBiFilter(r, biFilter));
   const validCount = validRespondents.length;
 
-  // Leave-one-out facet counts so unselected categories retain non-zero context
-  const senPool = allValid.filter((r) => matchesBiFilter(r, biFilter, 'seniorities'));
-  const senioritiesFacet: BiFacetBarItem[] = SENIORITY_ORDER.map((sen) => {
-    const count = senPool.filter((r) => r.seniority === sen).length;
-    const selected = biFilter.seniorities.includes(sen);
-    return {
-      id: sen,
-      label: sen,
-      count,
-      pct: senPool.length > 0 ? (count / senPool.length) * 100 : 0,
-      selected,
-      dimmed: biFilter.seniorities.length > 0 && !selected,
-    };
-  });
-
   const baselineToolCounts = new Map<string, number>();
   for (const r of allValid) {
     const t = getToolLabel(r);
@@ -265,84 +306,71 @@ export function analyzeBiDashboardSlice(
     }
   }
 
-  const toolPool = allValid.filter((r) => matchesBiFilter(r, biFilter, 'tools'));
-  const toolsFacet: BiFacetBarItem[] = Array.from(baselineToolCounts.entries())
-    .map(([tool, baseCount]) => {
-      const count = toolPool.filter((r) => getToolLabel(r) === tool).length;
-      const selected = biFilter.tools.includes(tool);
-      return {
-        id: tool,
-        label: tool,
-        count,
-        baseCount,
-        pct: toolPool.length > 0 ? (count / toolPool.length) * 100 : 0,
-        selected,
-        dimmed: biFilter.tools.length > 0 && !selected,
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.count - a.count || b.baseCount - a.baseCount || a.label.localeCompare(b.label)
-    )
-    .map(({ baseCount: _base, ...item }) => item);
+  const riskCodebook =
+    baselineCoding.riskCodebook.length > 0
+      ? baselineCoding.riskCodebook
+      : RISK_CODEBOOK;
+  const benefitCodebook =
+    baselineCoding.benefitCodebook.length > 0
+      ? baselineCoding.benefitCodebook
+      : BENEFIT_CODEBOOK;
 
-  const freqPool = allValid.filter((r) => matchesBiFilter(r, biFilter, 'frequencies'));
-  const frequenciesFacet: BiFacetBarItem[] = FREQUENCY_ORDER.map((freq) => {
-    const count = freqPool.filter((r) => r.frequencyRaw === freq).length;
-    const selected = biFilter.frequencies.includes(freq);
-    return {
-      id: freq,
-      label: freq,
-      count,
-      pct: freqPool.length > 0 ? (count / freqPool.length) * 100 : 0,
-      selected,
-      dimmed: biFilter.frequencies.length > 0 && !selected,
-    };
+  const senioritiesFacet = buildLeaveOneOutFacet({
+    allValid,
+    biFilter,
+    dimension: 'seniorities',
+    selectedIds: biFilter.seniorities,
+    categories: SENIORITY_ORDER.map((sen) => ({ id: sen, label: sen })),
+    matchesCategory: (r, id) => r.seniority === id,
+    matchesBiFilter,
   });
 
-  const riskPool = allValid.filter((r) => matchesBiFilter(r, biFilter, 'riskThemes'));
-  const riskCodebook =
-    result.baseline.openCoding.riskCodebook.length > 0
-      ? result.baseline.openCoding.riskCodebook
-      : RISK_CODEBOOK;
-  const riskThemesFacet: BiFacetBarItem[] = riskCodebook
-    .map((cat) => {
-      const count = riskPool.filter((r) =>
-        (riskThemesByRow.get(r.rowNumber) ?? []).includes(cat.id)
-      ).length;
-      const selected = biFilter.riskThemes.includes(cat.id);
-      return {
-        id: cat.id,
-        label: cat.label,
-        count,
-        pct: riskPool.length > 0 ? (count / riskPool.length) * 100 : 0,
-        selected,
-        dimmed: biFilter.riskThemes.length > 0 && !selected,
-      };
-    })
-    .sort((a, b) => b.count - a.count);
+  const toolsFacet = buildLeaveOneOutFacet({
+    allValid,
+    biFilter,
+    dimension: 'tools',
+    selectedIds: biFilter.tools,
+    categories: Array.from(baselineToolCounts.entries()).map(([tool, baseCount]) => ({
+      id: tool,
+      label: tool,
+      tieBreakCount: baseCount,
+    })),
+    matchesCategory: (r, id) => getToolLabel(r) === id,
+    matchesBiFilter,
+    sortMode: 'count_and_label',
+  });
 
-  const benefitPool = allValid.filter((r) => matchesBiFilter(r, biFilter, 'benefitThemes'));
-  const benefitCodebook =
-    result.baseline.openCoding.benefitCodebook.length > 0
-      ? result.baseline.openCoding.benefitCodebook
-      : BENEFIT_CODEBOOK;
-  const benefitThemesFacet: BiFacetBarItem[] = benefitCodebook
-    .map((cat) => {
-      const count = benefitPool.filter((r) =>
-        (benefitThemesByRow.get(r.rowNumber) ?? []).includes(cat.id)
-      ).length;
-      const selected = biFilter.benefitThemes.includes(cat.id);
-      return {
-        id: cat.id,
-        label: cat.label,
-        count,
-        pct: benefitPool.length > 0 ? (count / benefitPool.length) * 100 : 0,
-        selected,
-        dimmed: biFilter.benefitThemes.length > 0 && !selected,
-      };
-    })
-    .sort((a, b) => b.count - a.count);
+  const frequenciesFacet = buildLeaveOneOutFacet({
+    allValid,
+    biFilter,
+    dimension: 'frequencies',
+    selectedIds: biFilter.frequencies,
+    categories: FREQUENCY_ORDER.map((freq) => ({ id: freq, label: freq })),
+    matchesCategory: (r, id) => r.frequencyRaw === id,
+    matchesBiFilter,
+  });
+
+  const riskThemesFacet = buildLeaveOneOutFacet({
+    allValid,
+    biFilter,
+    dimension: 'riskThemes',
+    selectedIds: biFilter.riskThemes,
+    categories: riskCodebook.map((cat) => ({ id: cat.id, label: cat.label })),
+    matchesCategory: (r, id) => (riskThemesByRow.get(r.rowNumber) ?? []).includes(id),
+    matchesBiFilter,
+    sortMode: 'count',
+  });
+
+  const benefitThemesFacet = buildLeaveOneOutFacet({
+    allValid,
+    biFilter,
+    dimension: 'benefitThemes',
+    selectedIds: biFilter.benefitThemes,
+    categories: benefitCodebook.map((cat) => ({ id: cat.id, label: cat.label })),
+    matchesCategory: (r, id) => (benefitThemesByRow.get(r.rowNumber) ?? []).includes(id),
+    matchesBiFilter,
+    sortMode: 'count',
+  });
 
   const descriptives = buildDescriptives(validRespondents, [], {
     seniorities: [],
